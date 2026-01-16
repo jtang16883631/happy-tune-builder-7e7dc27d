@@ -51,8 +51,8 @@ linux:
 
 publish:
   provider: github
-  owner: YOUR_GITHUB_USERNAME
-  repo: YOUR_REPO_NAME
+  owner: jtang16883631
+  repo: happy-tune-builder
   releaseType: release
 
 # Auto-update configuration
