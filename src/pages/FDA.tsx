@@ -102,20 +102,25 @@ const FDA = () => {
   };
 
   const normalizeRow = (row: any): { ndc: string; drug_name: string; manufacturer?: string; package_description?: string; unit_cost?: number; fda_status?: string; dea_schedule?: string } | null => {
-    // Try common column name variations
-    const ndc = row.ndc || row.NDC || row['NDC Code'] || row['ndc_code'] || row.PRODUCTNDC || row.product_ndc;
-    const drugName = row.drug_name || row['Drug Name'] || row.PROPRIETARYNAME || row.proprietary_name || row.name || row.Name || row.DRUGNAME;
+    // Map your FDA Excel columns
+    const ndc = row['NDC'] || row.NDC || row.ndc;
+    // Use TRADE name first, fall back to GENERIC, then MERIDIAN DESC
+    const drugName = row['TRADE'] || row['GENERIC'] || row['MERIDIAN DESC'] || row.TRADE || row.GENERIC;
     
     if (!ndc || !drugName) return null;
+    
+    const packageSize = row['PACKAGE SIZE'] || row['FDA SIZE'] || '';
+    const sizeText = row['SIZE TXT'] || '';
+    const doseForm = row['DOSE FORM'] || '';
     
     return {
       ndc: String(ndc).trim(),
       drug_name: String(drugName).trim(),
-      manufacturer: row.manufacturer || row.Manufacturer || row.LABELERNAME || row.labeler_name || row.MANUFACTURER || null,
-      package_description: row.package_description || row['Package Description'] || row.PACKAGEDESCRIPTION || null,
-      unit_cost: row.unit_cost ? parseFloat(row.unit_cost) : null,
-      fda_status: row.fda_status || row['FDA Status'] || row.MARKETINGSTATUS || null,
-      dea_schedule: row.dea_schedule || row['DEA Schedule'] || row.DEASCHEDULE || null,
+      manufacturer: row['MANUFACTURER'] || row.MANUFACTURER || null,
+      package_description: [packageSize, sizeText, doseForm].filter(Boolean).join(' ').trim() || null,
+      unit_cost: null,
+      fda_status: row['RX/OTC INDICATOR'] || null,
+      dea_schedule: row['DEA CLASS'] || row['DEA Schedule'] || null,
     };
   };
 
