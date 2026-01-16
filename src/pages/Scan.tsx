@@ -406,25 +406,25 @@ const Scan = () => {
     );
   }
 
-  // Column definitions
+  // Column definitions - ALL cells are now editable
   const columns = [
     { key: 'loc', label: 'LOC', width: 'w-20', editable: true },
     { key: 'rec', label: 'REC', width: 'w-20', editable: true },
-    { key: 'time', label: 'TIME', width: 'w-24', editable: false },
+    { key: 'time', label: 'TIME', width: 'w-24', editable: true },
     { key: 'ndc', label: 'NDC', width: 'w-32', editable: true, isNdcInput: true },
     { key: 'scannedNdc', label: 'Scanned NDC', width: 'w-36', editable: true, isNdcInput: true },
     { key: 'qty', label: 'QTY', width: 'w-20', editable: true, type: 'number' },
     { key: 'misDivisor', label: 'MIS Divisor', width: 'w-24', editable: true, type: 'number' },
     { key: 'misCountMethod', label: 'MIS Count Method', width: 'w-32', editable: true },
     { key: 'itemNumber', label: 'Item Number', width: 'w-28', editable: true },
-    { key: 'medDesc', label: 'Med Desc', width: 'w-48', editable: false },
-    { key: 'meridianDesc', label: 'MERIDIAN DESC', width: 'w-48', editable: false },
+    { key: 'medDesc', label: 'Med Desc', width: 'w-48', editable: true },
+    { key: 'meridianDesc', label: 'MERIDIAN DESC', width: 'w-48', editable: true },
     { key: 'packSz', label: 'PACK SZ', width: 'w-24', editable: true },
-    { key: 'fdaSize', label: 'FDA SIZE', width: 'w-24', editable: false },
-    { key: 'manufacturer', label: 'MANUFACTURER', width: 'w-36', editable: false },
-    { key: 'source', label: 'SOURCE', width: 'w-24', editable: false },
+    { key: 'fdaSize', label: 'FDA SIZE', width: 'w-24', editable: true },
+    { key: 'manufacturer', label: 'MANUFACTURER', width: 'w-36', editable: true },
+    { key: 'source', label: 'SOURCE', width: 'w-24', editable: true },
     { key: 'packCost', label: 'Pack Cost', width: 'w-28', editable: true, type: 'currency' },
-    { key: 'unitCost', label: 'Unit Cost', width: 'w-28', editable: false, type: 'currency' },
+    { key: 'unitCost', label: 'Unit Cost', width: 'w-28', editable: true, type: 'currency' },
     { key: 'extended', label: 'Extended', width: 'w-28', editable: true, type: 'currency' },
     { key: 'blank', label: '$-', width: 'w-20', editable: true },
     { key: 'sheetType', label: 'Sheet Type', width: 'w-28', editable: true },
@@ -503,11 +503,16 @@ const Scan = () => {
                           const value = row[col.key as keyof ScanRow];
                           
                           if (col.editable) {
+                            // For currency fields, display with $ format but edit as number
+                            const displayValue = col.type === 'currency' && value !== null && value !== undefined
+                              ? `$${Number(value).toFixed(2)}`
+                              : (value?.toString() || '');
+                            
                             return (
                               <TableCell key={col.key} className="p-1">
                                 <Input
                                   ref={col.isNdcInput ? (el => inputRefs.current[index] = el) : undefined}
-                                  value={value?.toString() || ''}
+                                  value={col.type === 'currency' ? (value !== null && value !== undefined ? Number(value).toFixed(2) : '') : (value?.toString() || '')}
                                   onChange={(e) => {
                                     const newValue = col.type === 'number' || col.type === 'currency'
                                       ? (e.target.value ? parseFloat(e.target.value) : null)
@@ -518,6 +523,7 @@ const Scan = () => {
                                   onFocus={() => setActiveRowIndex(index)}
                                   type={col.type === 'number' || col.type === 'currency' ? 'number' : 'text'}
                                   step={col.type === 'currency' ? '0.01' : undefined}
+                                  placeholder={col.type === 'currency' ? '$0.00' : undefined}
                                   className="font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0"
                                 />
                               </TableCell>
