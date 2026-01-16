@@ -1,1 +1,7 @@
 project_id = "saotnmixqheikcfukqpr"
+
+[functions.fetch-fda-data]
+verify_jwt = false
+
+[functions.export-schedule-to-docs]
+verify_jwt = false

@@ -10,6 +10,7 @@ import Users from "./pages/Users";
 import Scan from "./pages/Scan";
 import FDA from "./pages/FDA";
 import Dashboard from "./pages/Dashboard";
+import Schedule from "./pages/Schedule";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -74,6 +75,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <FDA />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/schedule"
+        element={
+          <ProtectedRoute>
+            <Schedule />
           </ProtectedRoute>
         }
       />

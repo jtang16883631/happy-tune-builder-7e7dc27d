@@ -122,6 +122,123 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_jobs: {
+        Row: {
+          address: string | null
+          arrival_note: string | null
+          client_id: string | null
+          client_name: string
+          corporate_contact: string | null
+          created_at: string
+          created_by: string | null
+          email_data_to: string | null
+          final_invoice_to: string | null
+          hotel_info: string | null
+          id: string
+          invoice_number: string | null
+          is_travel_day: boolean | null
+          job_date: string
+          notes: string | null
+          onsite_contact: string | null
+          phone: string | null
+          previous_inventory_value: string | null
+          special_notes: string | null
+          start_time: string | null
+          status: string | null
+          team_count: number | null
+          team_members: string[] | null
+          travel_info: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          arrival_note?: string | null
+          client_id?: string | null
+          client_name: string
+          corporate_contact?: string | null
+          created_at?: string
+          created_by?: string | null
+          email_data_to?: string | null
+          final_invoice_to?: string | null
+          hotel_info?: string | null
+          id?: string
+          invoice_number?: string | null
+          is_travel_day?: boolean | null
+          job_date: string
+          notes?: string | null
+          onsite_contact?: string | null
+          phone?: string | null
+          previous_inventory_value?: string | null
+          special_notes?: string | null
+          start_time?: string | null
+          status?: string | null
+          team_count?: number | null
+          team_members?: string[] | null
+          travel_info?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          arrival_note?: string | null
+          client_id?: string | null
+          client_name?: string
+          corporate_contact?: string | null
+          created_at?: string
+          created_by?: string | null
+          email_data_to?: string | null
+          final_invoice_to?: string | null
+          hotel_info?: string | null
+          id?: string
+          invoice_number?: string | null
+          is_travel_day?: boolean | null
+          job_date?: string
+          notes?: string | null
+          onsite_contact?: string | null
+          phone?: string | null
+          previous_inventory_value?: string | null
+          special_notes?: string | null
+          start_time?: string | null
+          status?: string | null
+          team_count?: number | null
+          team_members?: string[] | null
+          travel_info?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      team_members: {
+        Row: {
+          color: string | null
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       template_cost_items: {
         Row: {
           billing_date: string | null
