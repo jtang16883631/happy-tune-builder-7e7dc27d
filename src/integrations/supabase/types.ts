@@ -333,6 +333,72 @@ export type Database = {
           },
         ]
       }
+      timesheet_entries: {
+        Row: {
+          break_minutes: number | null
+          client_name: string | null
+          created_at: string
+          end_time: string | null
+          hours_worked: number
+          id: string
+          job_id: string | null
+          notes: string | null
+          start_time: string | null
+          status: string | null
+          team_member_id: string | null
+          updated_at: string
+          user_id: string
+          work_date: string
+        }
+        Insert: {
+          break_minutes?: number | null
+          client_name?: string | null
+          created_at?: string
+          end_time?: string | null
+          hours_worked?: number
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          start_time?: string | null
+          status?: string | null
+          team_member_id?: string | null
+          updated_at?: string
+          user_id: string
+          work_date: string
+        }
+        Update: {
+          break_minutes?: number | null
+          client_name?: string | null
+          created_at?: string
+          end_time?: string | null
+          hours_worked?: number
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          start_time?: string | null
+          status?: string | null
+          team_member_id?: string | null
+          updated_at?: string
+          user_id?: string
+          work_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timesheet_entries_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timesheet_entries_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           assigned_at: string
