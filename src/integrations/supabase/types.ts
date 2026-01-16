@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      drugs: {
+        Row: {
+          created_at: string
+          dea_schedule: string | null
+          drug_name: string
+          fda_status: string | null
+          id: string
+          manufacturer: string | null
+          ndc: string
+          package_description: string | null
+          source: string | null
+          unit_cost: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dea_schedule?: string | null
+          drug_name: string
+          fda_status?: string | null
+          id?: string
+          manufacturer?: string | null
+          ndc: string
+          package_description?: string | null
+          source?: string | null
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dea_schedule?: string | null
+          drug_name?: string
+          fda_status?: string | null
+          id?: string
+          manufacturer?: string | null
+          ndc?: string
+          package_description?: string | null
+          source?: string | null
+          unit_cost?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null

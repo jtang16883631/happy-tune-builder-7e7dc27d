@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ClipboardCheck, LogOut, Users, ScanBarcode, FolderOpen } from 'lucide-react';
+import { ClipboardCheck, LogOut, Users, ScanBarcode, FolderOpen, Pill } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +21,7 @@ interface AppLayoutProps {
 const navItems = [
   { href: '/', label: 'Projects', icon: FolderOpen, roles: ['scanner', 'manager'] },
   { href: '/scan', label: 'Scanner', icon: ScanBarcode, roles: ['scanner', 'manager'] },
+  { href: '/drugs', label: 'Drug Database', icon: Pill, roles: ['manager'] },
   { href: '/users', label: 'Users', icon: Users, roles: ['manager'] },
 ];
 
