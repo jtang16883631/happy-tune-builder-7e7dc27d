@@ -106,26 +106,66 @@ const Index = () => {
     });
   };
 
-  // Group files by template name
+  // Extract the number from filename (e.g., "25100220" from "ALL COST DATA 25100220 Adventist...")
+  const extractNumber = (fileName: string): string | null => {
+    // Look for a number that's 6-10 digits (typical invoice/ID numbers)
+    const match = fileName.match(/\b(\d{6,10})\b/);
+    return match ? match[1] : null;
+  };
+
+  // Extract template name from the number and text after it
+  const getTemplateName = (fileName: string): string => {
+    const number = extractNumber(fileName);
+    if (!number) return fileName;
+    
+    // Find the number in the filename and get everything after it
+    const regex = new RegExp(`${number}\\s*(.+?)(?:\\s*(?:cost\\s*data|job\\s*ticket|jobticket|bljc).*)?$`, 'i');
+    const match = fileName.replace(/\.(xlsx|xlsm|xls|csv)$/i, '').match(regex);
+    
+    if (match && match[1]) {
+      // Clean up the name
+      let name = match[1]
+        .replace(/\s*(cost\s*data|job\s*ticket|jobticket|bljc|jobtickettemplate|\d{2}\.\d{2}\.\d{2})\s*/gi, '')
+        .trim();
+      return `${number} ${name}`.trim();
+    }
+    
+    return number;
+  };
+
+  // Group files by the number in the filename
   const groupFiles = (files: FileList): FileGroup[] => {
-    const groups: { [key: string]: FileGroup } = {};
+    const costFiles: { [number: string]: File } = {};
+    const jobTicketFiles: { [number: string]: File } = {};
 
     Array.from(files).forEach(file => {
       const fileName = file.name.toLowerCase();
-      const templateName = extractTemplateName(file.name);
+      const number = extractNumber(file.name);
+      
+      if (!number) return;
 
-      if (!groups[templateName]) {
-        groups[templateName] = { name: templateName };
-      }
-
-      if (fileName.includes('cost') || fileName.includes('bljc')) {
-        groups[templateName].costFile = file;
+      if (fileName.includes('cost')) {
+        costFiles[number] = file;
       } else if (fileName.includes('jobticket') || fileName.includes('job ticket')) {
-        groups[templateName].jobTicketFile = file;
+        jobTicketFiles[number] = file;
       }
     });
 
-    return Object.values(groups).filter(g => g.costFile && g.jobTicketFile);
+    // Match pairs by number
+    const groups: FileGroup[] = [];
+    for (const number of Object.keys(costFiles)) {
+      if (jobTicketFiles[number]) {
+        const costFile = costFiles[number];
+        const templateName = getTemplateName(costFile.name);
+        groups.push({
+          name: templateName,
+          costFile,
+          jobTicketFile: jobTicketFiles[number],
+        });
+      }
+    }
+
+    return groups;
   };
 
   const handleBulkImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
