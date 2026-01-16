@@ -54,6 +54,3 @@ publish:
   owner: jtang16883631
   repo: happy-tune-builder
   releaseType: release
-
-# Auto-update configuration
-autoUpdate: true
