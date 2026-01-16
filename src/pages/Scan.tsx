@@ -88,9 +88,9 @@ const Scan = () => {
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionDesc, setEditingSectionDesc] = useState('');
   
-  const createEmptyRow = (): ScanRow => ({
+  const createEmptyRow = useCallback((sectionName?: string): ScanRow => ({
     id: crypto.randomUUID(),
-    loc: '',
+    loc: sectionName || '',
     rec: '',
     time: '',
     ndc: '',
@@ -115,7 +115,7 @@ const Scan = () => {
     auditorInitials: '',
     results: '',
     additionalNotes: '',
-  });
+  }), []);
 
   const [scanRows, setScanRows] = useState<ScanRow[]>([createEmptyRow()]);
   const [activeRowIndex, setActiveRowIndex] = useState(0);
@@ -175,6 +175,19 @@ const Scan = () => {
       navigate('/');
     }
   }, [authLoading, hasRole, navigate]);
+
+  // Update LOC field when section changes (for empty rows only)
+  useEffect(() => {
+    if (!selectedSection) return;
+    
+    setScanRows(prev => prev.map(row => {
+      // Only update LOC if the row is empty (no NDC scanned yet)
+      if (!row.ndc && !row.scannedNdc) {
+        return { ...row, loc: selectedSection.full_section || '' };
+      }
+      return row;
+    }));
+  }, [selectedSection]);
 
   // Auto-save with debounce - using localStorage for scan records
   useEffect(() => {
@@ -419,7 +432,7 @@ const Scan = () => {
     // Auto-add new row if this is the last row
     setScanRows(prev => {
       if (rowIndex === prev.length - 1) {
-        return [...prev, createEmptyRow()];
+        return [...prev, createEmptyRow(selectedSection?.full_section || '')];
       }
       return prev;
     });
@@ -509,7 +522,7 @@ const Scan = () => {
       
       // Add new row if this is the last row
       if (rowIndex === scanRows.length - 1) {
-        setScanRows(prev => [...prev, createEmptyRow()]);
+        setScanRows(prev => [...prev, createEmptyRow(selectedSection?.full_section || '')]);
       }
       
       // Move to next row's NDC field
@@ -523,7 +536,7 @@ const Scan = () => {
   // Delete a row
   const handleDeleteRow = (rowIndex: number) => {
     if (scanRows.length === 1) {
-      setScanRows([createEmptyRow()]);
+      setScanRows([createEmptyRow(selectedSection?.full_section || '')]);
       return;
     }
     setScanRows(prev => prev.filter((_, i) => i !== rowIndex));
@@ -545,7 +558,7 @@ const Scan = () => {
       }
     }
     
-    setScanRows(prev => [...prev, createEmptyRow()]);
+    setScanRows(prev => [...prev, createEmptyRow(selectedSection?.full_section || '')]);
     setTimeout(() => {
       const lastIndex = scanRows.length;
       ndcInputRefs.current[lastIndex]?.focus();
