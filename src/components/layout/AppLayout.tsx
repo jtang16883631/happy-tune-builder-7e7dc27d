@@ -12,7 +12,8 @@ interface AppLayoutProps {
 }
 
 const navItems = [
-  { href: '/', label: 'Data Template', icon: FolderOpen, roles: ['scanner', 'manager'] },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['scanner', 'manager'] },
+  { href: '/data-template', label: 'Data Template', icon: FolderOpen, roles: ['scanner', 'manager'] },
   { href: '/scan', label: 'Scanner', icon: ScanBarcode, roles: ['scanner', 'manager'] },
   { href: '/fda', label: 'FDA', icon: Pill, roles: ['manager'] },
   { href: '/users', label: 'Users', icon: Users, roles: ['manager'] },

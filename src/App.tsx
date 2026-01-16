@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Users from "./pages/Users";
 import Scan from "./pages/Scan";
 import FDA from "./pages/FDA";
+import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -38,6 +39,14 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route
         path="/"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/data-template"
         element={
           <ProtectedRoute>
             <Index />
