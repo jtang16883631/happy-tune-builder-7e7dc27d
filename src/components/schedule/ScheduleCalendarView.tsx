@@ -1,39 +1,40 @@
 import { useState, useMemo } from 'react';
 import {
   format,
-  startOfMonth,
-  endOfMonth,
   eachDayOfInterval,
-  isSameMonth,
+  addDays,
+  subDays,
+  parseISO,
   isSameDay,
-  addMonths,
-  subMonths,
-  startOfWeek,
-  endOfWeek,
 } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   ChevronLeft,
   ChevronRight,
-  Plane,
-  Briefcase,
-  Coffee,
-  FileText,
-  Users,
-  Clock,
+  X,
   MapPin,
-  AlertCircle,
+  Phone,
+  Users,
+  Plane,
+  Clock,
+  AlertTriangle,
+  Briefcase,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   ScheduleEvent,
   TeamMember,
-  EVENT_TYPE_CONFIG,
   getEventsForDate,
-  ScheduleEventType,
 } from '@/hooks/useScheduleEvents';
 
 interface ScheduleCalendarViewProps {
@@ -43,26 +44,26 @@ interface ScheduleCalendarViewProps {
   onEditEvent: (event: ScheduleEvent) => void;
 }
 
-const EVENT_TYPE_ICONS = {
-  work: Briefcase,
-  travel: Plane,
-  off: Coffee,
-  note: FileText,
-};
-
 export function ScheduleCalendarView({
   events,
   teamMembers,
   onSelectDate,
   onEditEvent,
 }: ScheduleCalendarViewProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [startDate, setStartDate] = useState(() => new Date());
+  const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
+  const numDays = 10;
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const calendarStart = startOfWeek(monthStart);
-  const calendarEnd = endOfWeek(monthEnd);
-  const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+  const days = useMemo(() => {
+    return eachDayOfInterval({
+      start: startDate,
+      end: addDays(startDate, numDays - 1),
+    });
+  }, [startDate]);
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
 
   const getTeamMemberNames = (memberIds: string[] | null) => {
     if (!memberIds) return [];
@@ -71,205 +72,303 @@ export function ScheduleCalendarView({
       .filter(Boolean) as TeamMember[];
   };
 
-  // Detect conflicts (same team member assigned to multiple events on same day)
-  const getConflicts = (dayEvents: ScheduleEvent[]) => {
-    const memberAssignments: Record<string, ScheduleEvent[]> = {};
-    dayEvents.forEach((event) => {
-      event.team_members?.forEach((memberId) => {
-        if (!memberAssignments[memberId]) {
-          memberAssignments[memberId] = [];
-        }
-        memberAssignments[memberId].push(event);
-      });
-    });
+  // Get assignment status for a team member on a specific day
+  const getMemberDayStatus = (member: TeamMember, day: Date) => {
+    const dayEvents = getEventsForDate(events, day);
+    const memberEvents = dayEvents.filter(e => 
+      e.team_members?.includes(member.id)
+    );
 
-    const conflicts: { member: TeamMember; events: ScheduleEvent[] }[] = [];
-    Object.entries(memberAssignments).forEach(([memberId, assignedEvents]) => {
-      if (assignedEvents.length > 1) {
-        const member = teamMembers.find((m) => m.id === memberId);
-        if (member) {
-          conflicts.push({ member, events: assignedEvents });
-        }
-      }
-    });
+    if (memberEvents.length === 0) {
+      return { type: 'all', label: 'ALL', events: [] };
+    }
 
-    return conflicts;
+    // Check for travel events
+    const travelEvent = memberEvents.find(e => e.event_type === 'travel' || e.is_travel_day);
+    if (travelEvent) {
+      const locationLabel = travelEvent.location_to 
+        ? travelEvent.location_to.split(',')[0].slice(0, 8)
+        : 'Travel';
+      return { type: 'travel', label: locationLabel, events: memberEvents };
+    }
+
+    // Check for work events
+    const workEvent = memberEvents.find(e => e.event_type === 'work');
+    if (workEvent) {
+      const clientLabel = workEvent.client_name?.split(' ')[0]?.slice(0, 10) || 'Work';
+      return { type: 'work', label: clientLabel, events: memberEvents };
+    }
+
+    // Check for off events
+    const offEvent = memberEvents.find(e => e.event_type === 'off');
+    if (offEvent) {
+      return { type: 'off', label: 'OFF', events: memberEvents };
+    }
+
+    return { type: 'all', label: 'ALL', events: memberEvents };
   };
 
+  const handlePrev = () => setStartDate(subDays(startDate, numDays));
+  const handleNext = () => setStartDate(addDays(startDate, numDays));
+
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <CardTitle className="text-xl">{format(currentMonth, 'MMMM yyyy')}</CardTitle>
-          <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {/* Weekday Headers */}
-        <div className="grid grid-cols-7 gap-1 mb-2">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
-              {day}
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-semibold">Team Schedule Grid</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={handlePrev}>
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <span className="text-sm font-medium min-w-[180px] text-center">
+                {format(startDate, 'MMM d')} - {format(addDays(startDate, numDays - 1), 'MMM d, yyyy')}
+              </span>
+              <Button variant="ghost" size="icon" onClick={handleNext}>
+                <ChevronRight className="h-5 w-5" />
+              </Button>
             </div>
-          ))}
-        </div>
-
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1">
-          {calendarDays.map((day) => {
-            const dayEvents = getEventsForDate(events, day);
-            const conflicts = getConflicts(dayEvents);
-            const isCurrentMonth = isSameMonth(day, currentMonth);
-            const isToday = isSameDay(day, new Date());
-
-            return (
-              <TooltipProvider key={format(day, 'yyyy-MM-dd')}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => onSelectDate(day)}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <ScrollArea className="w-full">
+            <div className="min-w-max">
+              {/* Header Row - Dates */}
+              <div className="flex border-b bg-muted/30">
+                <div className="w-32 shrink-0 p-3 font-medium text-muted-foreground border-r">
+                  Team Member
+                </div>
+                {days.map((day) => {
+                  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                  const isToday = isSameDay(day, new Date());
+                  return (
+                    <div
+                      key={format(day, 'yyyy-MM-dd')}
                       className={cn(
-                        'min-h-[100px] p-1 border rounded-lg transition-all hover:border-primary/50 hover:shadow-sm text-left',
-                        !isCurrentMonth && 'opacity-40',
-                        isToday && 'ring-2 ring-primary ring-offset-2'
+                        'w-28 shrink-0 p-2 text-center border-r',
+                        isWeekend && 'bg-muted/50',
+                        isToday && 'bg-primary/10'
                       )}
                     >
-                      {/* Day Number */}
-                      <div className="flex items-center justify-between mb-1">
-                        <span
+                      <div className="text-xs text-muted-foreground">
+                        {format(day, 'EEE')}
+                      </div>
+                      <div className={cn(
+                        'text-sm font-semibold',
+                        isToday && 'text-primary'
+                      )}>
+                        {format(day, 'MMM d')}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Team Member Rows */}
+              {teamMembers.map((member) => (
+                <div key={member.id} className="flex border-b hover:bg-muted/20">
+                  <div className="w-32 shrink-0 p-3 font-medium border-r flex items-center gap-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback 
+                        className="text-xs"
+                        style={member.color ? { backgroundColor: member.color, color: '#fff' } : undefined}
+                      >
+                        {getInitials(member.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="truncate text-sm">{member.name.split(' ')[0]}</span>
+                  </div>
+                  {days.map((day) => {
+                    const status = getMemberDayStatus(member, day);
+                    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                    const isToday = isSameDay(day, new Date());
+
+                    return (
+                      <div
+                        key={format(day, 'yyyy-MM-dd')}
+                        className={cn(
+                          'w-28 shrink-0 p-1.5 border-r flex items-center justify-center cursor-pointer hover:bg-muted/30',
+                          isWeekend && 'bg-muted/30',
+                          isToday && 'bg-primary/5'
+                        )}
+                        onClick={() => {
+                          if (status.events.length > 0) {
+                            setSelectedEvent(status.events[0]);
+                          } else {
+                            onSelectDate(day);
+                          }
+                        }}
+                      >
+                        <Badge
+                          variant="outline"
                           className={cn(
-                            'text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full',
-                            isToday && 'bg-primary text-primary-foreground'
+                            'text-xs font-medium cursor-pointer transition-colors w-full justify-center',
+                            status.type === 'all' && 'bg-primary/20 text-primary border-primary/30 hover:bg-primary/30',
+                            status.type === 'travel' && 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900 dark:text-amber-200 hover:bg-amber-200',
+                            status.type === 'work' && 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900 dark:text-blue-200 hover:bg-blue-200',
+                            status.type === 'off' && 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300'
                           )}
                         >
-                          {format(day, 'd')}
-                        </span>
-                        {conflicts.length > 0 && (
-                          <AlertCircle className="h-4 w-4 text-destructive" />
-                        )}
+                          {status.label}
+                        </Badge>
                       </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
 
-                      {/* Event Pills */}
-                      <div className="space-y-0.5">
-                        {dayEvents.slice(0, 3).map((event) => {
-                          const eventType = (event.event_type || (event.is_travel_day ? 'travel' : 'work')) as ScheduleEventType;
-                          const config = EVENT_TYPE_CONFIG[eventType];
-                          const Icon = EVENT_TYPE_ICONS[eventType];
-
-                          return (
-                            <div
-                              key={event.id}
-                              className={cn(
-                                'text-xs px-1.5 py-0.5 rounded truncate flex items-center gap-1',
-                                config.bgClass,
-                                config.textClass
-                              )}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEditEvent(event);
-                              }}
-                            >
-                              <Icon className="h-3 w-3 shrink-0" />
-                              <span className="truncate">
-                                {event.start_time && `${event.start_time} `}
-                                {event.event_type === 'work' ? event.client_name : event.event_title || config.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {dayEvents.length > 3 && (
-                          <div className="text-xs text-muted-foreground pl-1">
-                            +{dayEvents.length - 3} more
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  </TooltipTrigger>
-
-                  {/* Tooltip with full event details */}
-                  {dayEvents.length > 0 && (
-                    <TooltipContent side="right" className="max-w-sm p-4">
-                      <div className="space-y-3">
-                        <p className="font-bold">{format(day, 'EEEE, MMMM d')}</p>
-                        {dayEvents.map((event) => {
-                          const eventType = (event.event_type || (event.is_travel_day ? 'travel' : 'work')) as ScheduleEventType;
-                          const config = EVENT_TYPE_CONFIG[eventType];
-                          const Icon = EVENT_TYPE_ICONS[eventType];
-                          const members = getTeamMemberNames(event.team_members);
-
-                          return (
-                            <div key={event.id} className={cn('p-2 rounded', config.bgClass)}>
-                              <div className="flex items-center gap-2 font-medium">
-                                <Icon className="h-4 w-4" />
-                                {event.event_type === 'work' ? event.client_name : event.event_title || config.label}
-                              </div>
-                              {event.start_time && (
-                                <p className="text-xs flex items-center gap-1 mt-1">
-                                  <Clock className="h-3 w-3" />
-                                  {event.start_time}
-                                </p>
-                              )}
-                              {event.address && (
-                                <p className="text-xs flex items-center gap-1 mt-1">
-                                  <MapPin className="h-3 w-3" />
-                                  {event.address}
-                                </p>
-                              )}
-                              {members.length > 0 && (
-                                <p className="text-xs flex items-center gap-1 mt-1">
-                                  <Users className="h-3 w-3" />
-                                  {members.map((m) => m.name).join(', ')}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {conflicts.length > 0 && (
-                          <div className="p-2 bg-destructive/10 text-destructive rounded border border-destructive/30">
-                            <p className="text-xs font-medium flex items-center gap-1">
-                              <AlertCircle className="h-3 w-3" />
-                              Scheduling Conflicts:
-                            </p>
-                            {conflicts.map(({ member, events: conflictEvents }) => (
-                              <p key={member.id} className="text-xs mt-1">
-                                {member.name} assigned to {conflictEvents.length} events
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
-            );
-          })}
-        </div>
-
-        {/* Legend */}
-        <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t">
-          {(Object.keys(EVENT_TYPE_CONFIG) as ScheduleEventType[]).map((type) => {
-            const config = EVENT_TYPE_CONFIG[type];
-            const Icon = EVENT_TYPE_ICONS[type];
-            return (
-              <div key={type} className="flex items-center gap-1.5 text-sm">
-                <div className={cn('w-3 h-3 rounded', config.bgClass)} />
-                <Icon className="h-3 w-3" />
-                <span>{config.label}</span>
-              </div>
-            );
-          })}
-          <div className="flex items-center gap-1.5 text-sm text-destructive">
-            <AlertCircle className="h-3 w-3" />
-            <span>Conflict</span>
+          {/* Legend */}
+          <div className="flex items-center gap-4 p-4 border-t bg-muted/20">
+            <span className="text-xs text-muted-foreground font-medium">Legend:</span>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30 text-xs">
+                ALL
+              </Badge>
+              <span className="text-xs text-muted-foreground">Available</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-xs">
+                Travel
+              </Badge>
+              <span className="text-xs text-muted-foreground">Traveling</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+                Client
+              </Badge>
+              <span className="text-xs text-muted-foreground">Working</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-300 text-xs">
+                OFF
+              </Badge>
+              <span className="text-xs text-muted-foreground">Off</span>
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Event Detail Dialog */}
+      <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>
+                {selectedEvent?.event_type === 'travel' 
+                  ? `Travel to ${selectedEvent.location_to || 'destination'}`
+                  : selectedEvent?.client_name || selectedEvent?.event_title || 'Event Details'}
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedEvent && (
+            <div className="space-y-4">
+              {/* Date and Status */}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  {format(parseISO(selectedEvent.job_date), 'EEE, MMM d, yyyy')}
+                </Badge>
+                {selectedEvent.status && (
+                  <Badge variant="secondary">{selectedEvent.status}</Badge>
+                )}
+              </div>
+
+              {/* Team Members */}
+              {selectedEvent.team_members && selectedEvent.team_members.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Users className="h-4 w-4" />
+                    <span>Staff: ONLY</span>
+                  </div>
+                  <div className="flex -space-x-2">
+                    {getTeamMemberNames(selectedEvent.team_members).map((member) => (
+                      <Avatar key={member.id} className="h-8 w-8 border-2 border-background">
+                        <AvatarFallback 
+                          className="text-xs"
+                          style={member.color ? { backgroundColor: member.color, color: '#fff' } : undefined}
+                        >
+                          {getInitials(member.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Flags */}
+              {selectedEvent.exact_count_required && (
+                <div className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked readOnly className="rounded" />
+                  <span>Lisee Ringie vectoris</span>
+                </div>
+              )}
+
+              {/* Client Info */}
+              {selectedEvent.client_name && selectedEvent.event_type === 'work' && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{selectedEvent.client_name}</span>
+                  </div>
+                  {selectedEvent.address && (
+                    <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4 mt-0.5" />
+                      <span>{selectedEvent.address}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Travel Info */}
+              {selectedEvent.event_type === 'travel' && (
+                <div className="space-y-2">
+                  {selectedEvent.location_from && selectedEvent.location_to && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Plane className="h-4 w-4 text-muted-foreground" />
+                      <span>{selectedEvent.location_from} → {selectedEvent.location_to}</span>
+                    </div>
+                  )}
+                  {selectedEvent.travel_info && (
+                    <div className="text-sm text-muted-foreground">{selectedEvent.travel_info}</div>
+                  )}
+                </div>
+              )}
+
+              {/* Time */}
+              {selectedEvent.start_time && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span>{selectedEvent.start_time}</span>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedEvent.notes && (
+                <div className="p-3 bg-muted rounded-lg text-sm">
+                  <AlertTriangle className="h-4 w-4 inline mr-2" />
+                  {selectedEvent.notes}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setSelectedEvent(null)}>
+                  Close
+                </Button>
+                <Button onClick={() => {
+                  onEditEvent(selectedEvent);
+                  setSelectedEvent(null);
+                }}>
+                  Edit Event
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

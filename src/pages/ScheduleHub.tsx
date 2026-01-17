@@ -3,7 +3,7 @@ import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +22,10 @@ import {
   FileText,
   Copy,
   Loader2,
+  RefreshCw,
+  MoreHorizontal,
+  Search,
+  Settings,
 } from 'lucide-react';
 import { ScheduleBuilder } from '@/components/schedule/ScheduleBuilder';
 import { ScheduleAgendaView } from '@/components/schedule/ScheduleAgendaView';
@@ -34,10 +38,10 @@ import {
   useTeamMembers,
   useDeleteScheduleEvent,
   ScheduleEvent,
-  TeamMember,
 } from '@/hooks/useScheduleEvents';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { Input } from '@/components/ui/input';
 
 export default function ScheduleHub() {
   const [viewTab, setViewTab] = useState<'agenda' | 'calendar' | 'type'>('agenda');
@@ -46,9 +50,10 @@ export default function ScheduleHub() {
   const [editingEvent, setEditingEvent] = useState<ScheduleEvent | null>(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [isExporting, setIsExporting] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const weekEnd = endOfWeek(weekStart);
 
-  const { data: weekEvents = [], isLoading } = useScheduleEvents(weekStart, weekEnd);
+  const { data: weekEvents = [], isLoading, refetch } = useScheduleEvents(weekStart, weekEnd);
   const { data: allEvents = [] } = useAllScheduleEvents();
   const { data: teamMembers = [] } = useTeamMembers();
   const deleteMutation = useDeleteScheduleEvent();
@@ -109,6 +114,7 @@ export default function ScheduleHub() {
       } else if (response.data?.documentUrl) {
         window.open(response.data.documentUrl, '_blank');
         toast({ title: 'Schedule exported to Google Docs!' });
+        setLastSyncTime(new Date());
       } else if (response.data?.content) {
         await navigator.clipboard.writeText(response.data.content);
         toast({ 
@@ -124,32 +130,60 @@ export default function ScheduleHub() {
     }
   };
 
+  const handleRefresh = () => {
+    refetch();
+    toast({ title: 'Schedule refreshed' });
+  };
+
   return (
     <AppLayout fullWidth>
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">Schedule Hub</h1>
-            <p className="text-muted-foreground">Create and manage your schedule</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">Schedule</h1>
+            <span className="text-2xl font-light text-muted-foreground">Hub</span>
           </div>
+          
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setTeamDialogOpen(true)}>
-              <Users className="h-4 w-4 mr-2" />
-              Team
+            {/* Sync Status */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2 text-muted-foreground"
+              onClick={() => handleExport(false)}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Synced with Google Doc
+              {lastSyncTime && (
+                <span className="text-xs">({format(lastSyncTime, 'h:mm')}ago)</span>
+              )}
             </Button>
+            
+            <Button variant="ghost" size="icon" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            
+            <Button variant="ghost" size="icon">
+              <Search className="h-4 w-4" />
+            </Button>
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={isExporting}>
-                  {isExporting ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4 mr-2" />
-                  )}
-                  Export
+                <Button variant="ghost" size="icon">
+                  <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-background">
+                <DropdownMenuItem onClick={() => setTeamDialogOpen(true)}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Manage Team
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleExport(true)}>
                   <Copy className="h-4 w-4 mr-2" />
                   Copy to Clipboard
@@ -160,32 +194,61 @@ export default function ScheduleHub() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button size="sm" onClick={() => { setEditingEvent(null); setBuilderOpen(true); }}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Event
-            </Button>
           </div>
         </div>
 
         {/* View Tabs */}
         <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as any)}>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <TabsList>
-              <TabsTrigger value="agenda" className="gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <TabsList className="bg-muted/50">
+              <TabsTrigger value="agenda" className="gap-2 data-[state=active]:bg-background">
                 <List className="h-4 w-4" />
-                Agenda
+                Agenda view
               </TabsTrigger>
-              <TabsTrigger value="calendar" className="gap-2">
+              <TabsTrigger value="calendar" className="gap-2 data-[state=active]:bg-background">
                 <Calendar className="h-4 w-4" />
-                Calendar
+                Calendar view
               </TabsTrigger>
-              <TabsTrigger value="type" className="gap-2">
+              <TabsTrigger value="type" className="gap-2 data-[state=active]:bg-background">
                 <LayoutGrid className="h-4 w-4" />
-                By Type
+                Type view
               </TabsTrigger>
             </TabsList>
 
-            {viewTab === 'agenda' && (
+            <div className="flex items-center gap-2 ml-auto">
+              {/* Quick Actions */}
+              <Button variant="outline" size="sm" className="gap-2">
+                <Users className="h-4 w-4" />
+                Sylon Nodes
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2">
+                <LayoutGrid className="h-4 w-4" />
+                Saw Columing
+              </Button>
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleRefresh}>
+                <RefreshCw className="h-4 w-4" />
+                Refreshin
+              </Button>
+              <Button variant="ghost" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Date Navigation for Agenda */}
+          {viewTab === 'agenda' && (
+            <div className="flex items-center justify-between py-4 border-b">
+              <div className="flex items-center gap-4">
+                <Button 
+                  size="sm" 
+                  onClick={() => { setEditingEvent(null); setBuilderOpen(true); }}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Schedule Event
+                </Button>
+              </div>
+              
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon" onClick={() => setWeekStart(subWeeks(weekStart, 1))}>
                   <ChevronLeft className="h-5 w-5" />
@@ -197,12 +260,28 @@ export default function ScheduleHub() {
                   <ChevronRight className="h-5 w-5" />
                 </Button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          <TabsContent value="agenda" className="mt-4">
+          {/* Add Event button for other tabs */}
+          {viewTab !== 'agenda' && (
+            <div className="py-4">
+              <Button 
+                size="sm" 
+                onClick={() => { setEditingEvent(null); setBuilderOpen(true); }}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                New Schedule Event
+              </Button>
+            </div>
+          )}
+
+          <TabsContent value="agenda" className="mt-0">
             {isLoading ? (
-              <Card><CardContent className="py-12 text-center">Loading...</CardContent></Card>
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
             ) : (
               <ScheduleAgendaView
                 events={weekEvents}
@@ -215,7 +294,7 @@ export default function ScheduleHub() {
             )}
           </TabsContent>
 
-          <TabsContent value="calendar" className="mt-4">
+          <TabsContent value="calendar" className="mt-0">
             <ScheduleCalendarView
               events={allEvents}
               teamMembers={teamMembers}
@@ -224,7 +303,7 @@ export default function ScheduleHub() {
             />
           </TabsContent>
 
-          <TabsContent value="type" className="mt-4">
+          <TabsContent value="type" className="mt-0">
             <ScheduleTypeView
               events={allEvents}
               teamMembers={teamMembers}
