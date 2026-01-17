@@ -3,7 +3,6 @@ import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,14 +17,12 @@ import {
   List,
   LayoutGrid,
   Users,
-  Download,
   FileText,
   Copy,
   Loader2,
   RefreshCw,
   MoreHorizontal,
   Search,
-  Settings,
 } from 'lucide-react';
 import { ScheduleBuilder } from '@/components/schedule/ScheduleBuilder';
 import { ScheduleAgendaView } from '@/components/schedule/ScheduleAgendaView';
@@ -41,7 +38,6 @@ import {
 } from '@/hooks/useScheduleEvents';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { Input } from '@/components/ui/input';
 
 export default function ScheduleHub() {
   const [viewTab, setViewTab] = useState<'agenda' | 'calendar' | 'type'>('agenda');
@@ -140,7 +136,7 @@ export default function ScheduleHub() {
       <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">Schedule</h1>
             <span className="text-2xl font-light text-muted-foreground">Hub</span>
           </div>
@@ -150,32 +146,32 @@ export default function ScheduleHub() {
             <Button 
               variant="outline" 
               size="sm" 
-              className="gap-2 text-muted-foreground"
+              className="gap-2 text-muted-foreground text-xs"
               onClick={() => handleExport(false)}
               disabled={isExporting}
             >
               {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                <RefreshCw className="h-4 w-4" />
+                <RefreshCw className="h-3 w-3" />
               )}
               Synced with Google Doc
               {lastSyncTime && (
-                <span className="text-xs">({format(lastSyncTime, 'h:mm')}ago)</span>
+                <span>({format(lastSyncTime, 'h:mm')}ago)</span>
               )}
             </Button>
             
-            <Button variant="ghost" size="icon" onClick={handleRefresh}>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh}>
               <RefreshCw className="h-4 w-4" />
             </Button>
             
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" className="h-8 w-8">
               <Search className="h-4 w-4" />
             </Button>
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -200,84 +196,68 @@ export default function ScheduleHub() {
         {/* View Tabs */}
         <Tabs value={viewTab} onValueChange={(v) => setViewTab(v as any)}>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <TabsList className="bg-muted/50">
-              <TabsTrigger value="agenda" className="gap-2 data-[state=active]:bg-background">
-                <List className="h-4 w-4" />
+            <TabsList className="bg-muted/50 h-9">
+              <TabsTrigger value="agenda" className="gap-1.5 text-xs data-[state=active]:bg-background px-3">
+                <List className="h-3.5 w-3.5" />
                 Agenda view
               </TabsTrigger>
-              <TabsTrigger value="calendar" className="gap-2 data-[state=active]:bg-background">
-                <Calendar className="h-4 w-4" />
+              <TabsTrigger value="calendar" className="gap-1.5 text-xs data-[state=active]:bg-background px-3">
+                <Calendar className="h-3.5 w-3.5" />
                 Calendar view
               </TabsTrigger>
-              <TabsTrigger value="type" className="gap-2 data-[state=active]:bg-background">
-                <LayoutGrid className="h-4 w-4" />
+              <TabsTrigger value="type" className="gap-1.5 text-xs data-[state=active]:bg-background px-3">
+                <LayoutGrid className="h-3.5 w-3.5" />
                 Type view
               </TabsTrigger>
             </TabsList>
 
             <div className="flex items-center gap-2 ml-auto">
               {/* Quick Actions */}
-              <Button variant="outline" size="sm" className="gap-2">
-                <Users className="h-4 w-4" />
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
+                <Users className="h-3.5 w-3.5" />
                 Sylon Nodes
               </Button>
-              <Button variant="outline" size="sm" className="gap-2">
-                <LayoutGrid className="h-4 w-4" />
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
+                <LayoutGrid className="h-3.5 w-3.5" />
                 Saw Columing
               </Button>
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleRefresh}>
-                <RefreshCw className="h-4 w-4" />
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" onClick={handleRefresh}>
+                <RefreshCw className="h-3.5 w-3.5" />
                 Refreshin
               </Button>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="h-8 w-8">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </div>
           </div>
 
-          {/* Date Navigation for Agenda */}
-          {viewTab === 'agenda' && (
-            <div className="flex items-center justify-between py-4 border-b">
-              <div className="flex items-center gap-4">
-                <Button 
-                  size="sm" 
-                  onClick={() => { setEditingEvent(null); setBuilderOpen(true); }}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  New Schedule Event
-                </Button>
-              </div>
-              
+          {/* New Schedule Event button and Date Navigation */}
+          <div className="flex items-center justify-between py-4 border-b">
+            <Button 
+              size="sm" 
+              onClick={() => { setEditingEvent(null); setBuilderOpen(true); }}
+              className="gap-1.5 text-xs h-8"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Schedule Event
+            </Button>
+            
+            {viewTab === 'agenda' && (
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={() => setWeekStart(subWeeks(weekStart, 1))}>
-                  <ChevronLeft className="h-5 w-5" />
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setWeekStart(subWeeks(weekStart, 1))}>
+                  <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <span className="text-sm font-medium min-w-[200px] text-center">
+                <span className="text-sm font-medium min-w-[180px] text-center">
                   {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
                 </span>
-                <Button variant="ghost" size="icon" onClick={() => setWeekStart(addWeeks(weekStart, 1))}>
-                  <ChevronRight className="h-5 w-5" />
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setWeekStart(addWeeks(weekStart, 1))}>
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Add Event button for other tabs */}
-          {viewTab !== 'agenda' && (
-            <div className="py-4">
-              <Button 
-                size="sm" 
-                onClick={() => { setEditingEvent(null); setBuilderOpen(true); }}
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                New Schedule Event
-              </Button>
-            </div>
-          )}
-
-          <TabsContent value="agenda" className="mt-0">
+          <TabsContent value="agenda" className="mt-4">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -294,7 +274,7 @@ export default function ScheduleHub() {
             )}
           </TabsContent>
 
-          <TabsContent value="calendar" className="mt-0">
+          <TabsContent value="calendar" className="mt-4">
             <ScheduleCalendarView
               events={allEvents}
               teamMembers={teamMembers}
@@ -303,7 +283,7 @@ export default function ScheduleHub() {
             />
           </TabsContent>
 
-          <TabsContent value="type" className="mt-0">
+          <TabsContent value="type" className="mt-4">
             <ScheduleTypeView
               events={allEvents}
               teamMembers={teamMembers}
