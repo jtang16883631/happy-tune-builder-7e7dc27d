@@ -99,9 +99,9 @@ const Chat = () => {
   const [manageMembersOpen, setManageMembersOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomDesc, setNewRoomDesc] = useState('');
-  const [searchEmail, setSearchEmail] = useState('');
-  const [searchResults, setSearchResults] = useState<Profile[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [allUsers, setAllUsers] = useState<Profile[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -299,29 +299,43 @@ const Chat = () => {
     }
   };
 
-  // Search users
-  const handleSearchUsers = async () => {
-    if (!searchEmail.trim()) return;
-
-    setIsSearching(true);
+  // Fetch all registered users when add member dialog opens
+  const fetchAllUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, email, avatar_url')
-        .ilike('email', `%${searchEmail.trim()}%`)
-        .limit(10);
+        .order('full_name', { ascending: true });
 
       if (error) throw error;
-      
-      // Filter out existing members
-      const memberIds = new Set(members.map(m => m.user_id));
-      setSearchResults((data || []).filter(p => !memberIds.has(p.id)));
+      setAllUsers(data || []);
     } catch (err) {
-      console.error('Error searching users:', err);
+      console.error('Error fetching users:', err);
     } finally {
-      setIsSearching(false);
+      setIsLoadingUsers(false);
     }
-  };
+  }, []);
+
+  // Fetch users when dialog opens
+  useEffect(() => {
+    if (addMemberOpen) {
+      fetchAllUsers();
+      setSearchQuery('');
+    }
+  }, [addMemberOpen, fetchAllUsers]);
+
+  // Filter users: exclude existing members and apply search
+  const availableUsers = allUsers.filter(u => {
+    const isMember = members.some(m => m.user_id === u.id);
+    if (isMember) return false;
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      u.full_name?.toLowerCase().includes(query) ||
+      u.email?.toLowerCase().includes(query)
+    );
+  });
 
   // Add member
   const handleAddMember = async (profileId: string) => {
@@ -339,9 +353,8 @@ const Chat = () => {
       if (error) throw error;
       
       toast.success('Member added');
-      setSearchEmail('');
-      setSearchResults([]);
       fetchRoomData(selectedRoom.id);
+      fetchAllUsers(); // Refresh the user list
     } catch (err: any) {
       toast.error('Failed to add member: ' + err.message);
     }
@@ -641,48 +654,52 @@ const Chat = () => {
 
       {/* Add Member Dialog */}
       <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Member</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Search by email..."
-                value={searchEmail}
-                onChange={(e) => setSearchEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearchUsers()}
-              />
-              <Button onClick={handleSearchUsers} disabled={isSearching}>
-                {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
-              </Button>
-            </div>
+            <Input
+              placeholder="Search by name or email..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
             
-            {searchResults.length > 0 && (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {searchResults.map((profile) => (
-                  <div
-                    key={profile.id}
-                    className="flex items-center justify-between p-2 rounded-lg bg-muted"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={profile.avatar_url || undefined} />
-                        <AvatarFallback className="text-xs">
-                          {getInitials(profile.full_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-medium">{profile.full_name || 'Unknown'}</p>
-                        <p className="text-xs text-muted-foreground">{profile.email}</p>
-                      </div>
-                    </div>
-                    <Button size="sm" onClick={() => handleAddMember(profile.id)}>
-                      <UserPlus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+            {isLoadingUsers ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
+            ) : availableUsers.length > 0 ? (
+              <ScrollArea className="h-64">
+                <div className="space-y-2 pr-4">
+                  {availableUsers.map((profile) => (
+                    <div
+                      key={profile.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-muted"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={profile.avatar_url || undefined} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(profile.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-sm font-medium">{profile.full_name || 'Unknown'}</p>
+                          <p className="text-xs text-muted-foreground">{profile.email}</p>
+                        </div>
+                      </div>
+                      <Button size="sm" onClick={() => handleAddMember(profile.id)}>
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                {searchQuery ? 'No users found' : 'All users are already members'}
+              </p>
             )}
           </div>
         </DialogContent>
