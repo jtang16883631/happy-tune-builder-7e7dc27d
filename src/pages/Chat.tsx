@@ -114,14 +114,17 @@ const Chat = () => {
 
   // Fetch rooms
   const fetchRooms = useCallback(async () => {
-    if (!user?.id) return;
-    
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('chat_rooms')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       setRooms(data || []);
     } catch (err) {
@@ -239,7 +242,15 @@ const Chat = () => {
 
   // Create room
   const handleCreateRoom = async () => {
-    if (!newRoomName.trim() || !user?.id) return;
+    if (!newRoomName.trim()) return;
+
+    // Hard guard: this operation requires an authenticated session
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session || !user?.id) {
+      toast.error('请先登录后再创建聊天室');
+      navigate('/auth');
+      return;
+    }
 
     try {
       const { data: room, error: roomError } = await supabase
@@ -247,7 +258,7 @@ const Chat = () => {
         .insert({
           name: newRoomName.trim(),
           description: newRoomDesc.trim() || null,
-          created_by: user.id
+          created_by: user.id,
         })
         .select()
         .single();
@@ -260,7 +271,7 @@ const Chat = () => {
         .insert({
           room_id: room.id,
           user_id: user.id,
-          is_admin: true
+          is_admin: true,
         });
 
       if (memberError) throw memberError;
@@ -272,7 +283,8 @@ const Chat = () => {
       fetchRooms();
       setSelectedRoom(room);
     } catch (err: any) {
-      toast.error('Failed to create room: ' + err.message);
+      // Most common cause: user is not actually authenticated yet
+      toast.error('Failed to create room: ' + (err?.message || 'Unknown error'));
     }
   };
 
