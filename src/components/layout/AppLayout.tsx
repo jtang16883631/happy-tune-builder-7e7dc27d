@@ -37,7 +37,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: allRoles },
       { href: '/schedule', label: 'Schedule Hub', icon: CalendarDays, roles: allRoles },
-      { href: '#', label: 'Live Tracker', icon: Radio, roles: allRoles, disabled: true },
+      { href: '/live-tracker', label: 'Live Tracker', icon: Radio, roles: allRoles },
     ],
   },
   {
