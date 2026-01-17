@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import { lazy, Suspense } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import Scan from "./pages/Scan";
 import FDA from "./pages/FDA";
 import Dashboard from "./pages/Dashboard";
 import Schedule from "./pages/Schedule";
+import ScheduleHub from "./pages/ScheduleHub";
 import Timesheet from "./pages/Timesheet";
 import Issues from "./pages/Issues";
 import LiveTracker from "./pages/LiveTracker";
@@ -108,6 +110,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Schedule />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/schedule-hub"
+          element={
+            <ProtectedRoute>
+              <ScheduleHub />
             </ProtectedRoute>
           }
         />
