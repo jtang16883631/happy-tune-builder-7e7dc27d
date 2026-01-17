@@ -311,7 +311,7 @@ export function useCloudTemplates() {
       }
     },
     [user, fetchTemplates]
-
+  );
   // Update cost data for a template - replaces all cost items
   const updateCostData = useCallback(
     async (
