@@ -1,5 +1,4 @@
 import { format, parseISO, eachDayOfInterval } from 'date-fns';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -12,8 +11,7 @@ import {
   Trash2,
   Hotel,
   AlertTriangle,
-  Car,
-  FileText,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -53,7 +51,7 @@ export function ScheduleAgendaView({
   };
 
   return (
-    <div className="space-y-1 bg-card rounded-lg border">
+    <div className="space-y-0 bg-card rounded-lg border overflow-hidden">
       {days.map((day, dayIndex) => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const dayEvents = getEventsForDate(events, day);
@@ -63,42 +61,43 @@ export function ScheduleAgendaView({
         const noteEvents = dayEvents.filter((e) => e.event_type === 'note');
 
         return (
-          <div key={dateStr}>
+          <div key={dateStr} className={cn(dayIndex > 0 && 'border-t')}>
             {/* Day Header */}
-            <div className={cn(
-              'px-4 py-3 flex items-center justify-between',
-              dayIndex > 0 && 'border-t'
-            )}>
+            <div className="px-4 py-3 flex items-center justify-between bg-muted/30">
               <div className="flex items-center gap-3">
-                <span className="text-lg font-bold text-foreground">
+                <span className="text-base font-semibold text-foreground">
                   {format(day, 'EEEE, MMM d, yyyy')}
                 </span>
                 {travelEvent && (
-                  <Badge className="bg-red-500 hover:bg-red-600 text-white font-semibold">
+                  <Badge className="bg-red-500 hover:bg-red-600 text-white font-semibold text-xs">
                     Travel ONLY▼
                   </Badge>
                 )}
               </div>
-              {workEvents[0]?.invoice_number && (
-                <span className="text-sm text-muted-foreground font-mono">
-                  {workEvents[0].invoice_number}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {(workEvents[0]?.invoice_number || travelEvent?.invoice_number) && (
+                  <span className="text-sm text-muted-foreground font-mono">
+                    {workEvents[0]?.invoice_number || travelEvent?.invoice_number}
+                  </span>
+                )}
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
 
             {/* Travel Event */}
             {travelEvent && (
-              <div className="px-4 py-3 border-t border-dashed">
+              <div className="px-4 py-3 border-t bg-background">
                 <div className="flex items-start gap-3">
-                  <div className="flex items-center gap-2 min-w-[120px]">
-                    <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900 dark:text-amber-200">
-                      <MapPin className="h-3 w-3 mr-1" />
-                      {travelEvent.location_from || 'Origin'}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 text-xs">
+                      Travel {dayIndex + 1}
                     </Badge>
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div className="flex-1 space-y-1.5">
+                    {/* Location */}
                     <div className="flex items-center gap-2 text-foreground">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="font-medium">
                         {travelEvent.location_from && travelEvent.location_to 
                           ? `${travelEvent.location_from} – ${travelEvent.location_to}`
@@ -106,35 +105,35 @@ export function ScheduleAgendaView({
                       </span>
                     </div>
                     
-                    {/* Team Members */}
+                    {/* Team Members - simple text */}
                     {travelEvent.team_members && travelEvent.team_members.length > 0 && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <span>{getTeamMemberNames(travelEvent.team_members).map(m => m.name).join(', ')}</span>
+                      <div className="text-sm text-muted-foreground">
+                        {getTeamMemberNames(travelEvent.team_members).map(m => m.name.split(' ')[0]).join(' ')}
                       </div>
                     )}
 
                     {/* Flight Info */}
                     {travelEvent.travel_info && (
                       <div className="flex items-center gap-2 text-sm">
-                        <Plane className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-foreground">Flight: {travelEvent.travel_info}</span>
+                        <span className="text-muted-foreground">Flight:</span>
+                        <span className="text-foreground">{travelEvent.travel_info}</span>
                       </div>
                     )}
 
                     {/* Hotel Info */}
                     {travelEvent.hotel_info && (
                       <div className="flex items-center gap-2 text-sm">
-                        <Hotel className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-foreground">Motel: {travelEvent.hotel_info}</span>
+                        <span className="text-muted-foreground">Motel:</span>
+                        <span className="text-foreground">{travelEvent.hotel_info}</span>
                       </div>
                     )}
                   </div>
 
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 shrink-0">
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(travelEvent)}>
                       <Edit className="h-3 w-3" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(travelEvent.id)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(travelEvent.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -147,13 +146,13 @@ export function ScheduleAgendaView({
               const members = getTeamMemberNames(event.team_members);
               
               return (
-                <div key={event.id} className="px-4 py-4 border-t">
+                <div key={event.id} className="px-4 py-4 border-t bg-background">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-3">
                       {/* Start Time Badge */}
                       {event.start_time && (
                         <div className="flex items-center gap-3">
-                          <Badge className="bg-red-600 hover:bg-red-700 text-white font-bold px-3">
+                          <Badge className="bg-red-600 hover:bg-red-700 text-white font-bold px-2">
                             START: {event.start_time}
                           </Badge>
                           {event.arrival_note && (
@@ -167,14 +166,14 @@ export function ScheduleAgendaView({
                       {/* Team Members with Avatars */}
                       {members.length > 0 && (
                         <div className="flex items-center gap-2">
-                          <Badge className="bg-yellow-200 text-yellow-900 hover:bg-yellow-300 font-semibold px-2">
-                            ({members.length}){members.map(m => m.name).join('+')}
+                          <Badge className="bg-yellow-200 text-yellow-900 hover:bg-yellow-300 font-semibold px-2 text-xs">
+                            ({members.length}){members.map(m => m.name.split(' ')[0]).join('+')}
                           </Badge>
                           <div className="flex -space-x-2">
                             {members.slice(0, 6).map((member) => (
-                              <Avatar key={member.id} className="h-7 w-7 border-2 border-background">
+                              <Avatar key={member.id} className="h-6 w-6 border-2 border-background">
                                 <AvatarFallback 
-                                  className="text-xs font-medium"
+                                  className="text-[10px] font-medium"
                                   style={member.color ? { backgroundColor: member.color, color: '#fff' } : undefined}
                                 >
                                   {getInitials(member.name)}
@@ -200,7 +199,7 @@ export function ScheduleAgendaView({
                       )}
 
                       {/* Client Info */}
-                      <div className="space-y-1.5 text-sm">
+                      <div className="space-y-1 text-sm">
                         <div className="flex items-center gap-2">
                           <Briefcase className="h-4 w-4 text-muted-foreground" />
                           <span className="font-medium text-foreground">
@@ -247,18 +246,18 @@ export function ScheduleAgendaView({
                       {(event.exact_count_required || event.partial_inventory || event.client_onsite) && (
                         <div className="flex gap-2 flex-wrap">
                           {event.exact_count_required && (
-                            <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950">
+                            <Badge variant="outline" className="border-orange-500 text-orange-600 bg-orange-50 dark:bg-orange-950 text-xs">
                               <AlertTriangle className="h-3 w-3 mr-1" />
                               Exact Count Required
                             </Badge>
                           )}
                           {event.partial_inventory && (
-                            <Badge variant="outline" className="border-purple-500 text-purple-600 bg-purple-50 dark:bg-purple-950">
+                            <Badge variant="outline" className="border-purple-500 text-purple-600 bg-purple-50 dark:bg-purple-950 text-xs">
                               Partial Inventory
                             </Badge>
                           )}
                           {event.client_onsite && (
-                            <Badge variant="outline" className="border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950">
+                            <Badge variant="outline" className="border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950 text-xs">
                               Client On-site
                             </Badge>
                           )}
@@ -267,7 +266,7 @@ export function ScheduleAgendaView({
                     </div>
 
                     {/* Invoice Number and Actions */}
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-col items-end gap-2 shrink-0">
                       {event.invoice_number && (
                         <span className="text-sm font-mono text-muted-foreground">
                           {event.invoice_number} ▼
@@ -277,7 +276,7 @@ export function ScheduleAgendaView({
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                           <Edit className="h-3 w-3" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -299,7 +298,7 @@ export function ScheduleAgendaView({
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                       <Edit className="h-3 w-3" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -312,7 +311,6 @@ export function ScheduleAgendaView({
               <div key={event.id} className="px-4 py-3 border-t bg-blue-50 dark:bg-blue-950/30">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-blue-600" />
                     <span className="font-medium text-blue-800 dark:text-blue-200">{event.event_title || 'Note'}</span>
                     {event.notes && <span className="text-sm text-blue-600 dark:text-blue-400">- {event.notes}</span>}
                   </div>
@@ -320,7 +318,7 @@ export function ScheduleAgendaView({
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                       <Edit className="h-3 w-3" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -330,7 +328,7 @@ export function ScheduleAgendaView({
 
             {/* Empty State */}
             {dayEvents.length === 0 && (
-              <div className="px-4 py-6 border-t text-center text-muted-foreground text-sm">
+              <div className="px-4 py-6 border-t text-center text-muted-foreground text-sm bg-background">
                 No events scheduled
               </div>
             )}

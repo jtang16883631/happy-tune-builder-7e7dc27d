@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,7 +11,6 @@ import {
   MapPin,
   Edit,
   Trash2,
-  Clock,
   Hotel,
   AlertTriangle,
 } from 'lucide-react';
@@ -60,7 +59,7 @@ export function ScheduleTypeView({
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-amber-500" />
           <h2 className="text-lg font-semibold text-foreground">
-            Travel Days: <span className="text-muted-foreground font-normal">({travelEvents.length}Promísào)</span>
+            Travel Days: <span className="text-muted-foreground font-normal">({travelEvents.length}Promísão)</span>
           </h2>
         </div>
         
@@ -69,41 +68,43 @@ export function ScheduleTypeView({
             {travelEvents.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground">No travel days scheduled</div>
             ) : (
-              travelEvents.map((event) => {
+              travelEvents.map((event, index) => {
                 const members = getTeamMemberNames(event.team_members);
                 return (
                   <div key={event.id} className="p-4 hover:bg-muted/30 transition-colors">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
-                        <div className="flex items-center gap-2">
-                          <Plane className="h-4 w-4 text-amber-600" />
-                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300">
-                            Travel {travelEvents.indexOf(event) + 1}
-                          </Badge>
-                        </div>
+                        <Plane className="h-4 w-4 text-amber-600 mt-0.5" />
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">
                               {format(parseISO(event.job_date), 'MMM d')}
                             </span>
-                            <span className="text-foreground">
+                            <span className="font-medium text-foreground">
                               {event.location_from && event.location_to 
                                 ? `${event.location_from} – ${event.location_to}`
                                 : event.location_to || event.address || 'Travel'}
                             </span>
                           </div>
                           
+                          {/* Destination details */}
+                          {event.location_to && (
+                            <div className="text-sm text-muted-foreground">
+                              — {event.location_to}
+                            </div>
+                          )}
+                          
                           {/* Team member names */}
                           {members.length > 0 && (
                             <div className="text-sm text-muted-foreground">
-                              {members.map(m => m.name).join(', ')}
+                              {members.map(m => m.name.split(' ')[0]).join(' ')} 
+                              {event.travel_info && ` ${event.travel_info}`}
                             </div>
                           )}
 
-                          {/* Travel/Flight info */}
+                          {/* Flight info */}
                           {event.travel_info && (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Plane className="h-3 w-3" />
+                            <div className="text-sm text-muted-foreground">
                               Flight: {event.travel_info}
                             </div>
                           )}
@@ -111,18 +112,24 @@ export function ScheduleTypeView({
                           {/* Hotel info */}
                           {event.hotel_info && (
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Hotel className="h-3 w-3" />
-                              {event.hotel_info}
+                              Motel: {event.hotel_info}
+                            </div>
+                          )}
+
+                          {/* Additional notes */}
+                          {event.notes && (
+                            <div className="text-sm text-muted-foreground">
+                              {event.notes}
                             </div>
                           )}
                         </div>
                       </div>
                       
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 shrink-0">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                           <Edit className="h-3 w-3" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -140,7 +147,7 @@ export function ScheduleTypeView({
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-primary" />
           <h2 className="text-lg font-semibold text-foreground">
-            Work Days: <span className="text-muted-foreground font-normal">({workEvents.length}Promísào)</span>
+            Work Days: <span className="text-muted-foreground font-normal">({workEvents.length}Promísão)</span>
           </h2>
         </div>
         
@@ -155,28 +162,27 @@ export function ScheduleTypeView({
                   <div key={event.id} className="p-4 hover:bg-muted/30 transition-colors">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
-                        <div className="flex items-center gap-2">
-                          <Briefcase className="h-4 w-4 text-primary" />
-                          <span className="text-sm text-muted-foreground">
-                            {format(parseISO(event.job_date), 'EEEE, MMM d')}
-                          </span>
-                        </div>
+                        <Briefcase className="h-4 w-4 text-primary mt-0.5" />
                         <div className="space-y-1.5">
-                          <div className="font-medium text-foreground">
-                            {event.start_time && (
-                              <span className="text-muted-foreground">{event.start_time}- </span>
-                            )}
-                            {event.client_name}
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {format(parseISO(event.job_date), 'EEEE, MMM d')}-
+                            </span>
+                            <span className="font-medium text-foreground">
+                              {event.start_time && `${event.start_time}- `}
+                              {event.client_name}
+                            </span>
                           </div>
                           
                           {/* Team member badges */}
                           {members.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-1 items-center">
+                              <span className="text-sm text-muted-foreground mr-1">A</span>
                               {members.map((member) => (
                                 <Badge
                                   key={member.id}
                                   variant="secondary"
-                                  className="text-xs font-medium"
+                                  className="text-xs font-medium px-1.5 py-0"
                                   style={member.color ? { backgroundColor: member.color, color: '#fff' } : undefined}
                                 >
                                   {member.name.split(' ')[0]}
@@ -187,23 +193,22 @@ export function ScheduleTypeView({
 
                           {/* Address */}
                           {event.address && (
-                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                              <MapPin className="h-3 w-3" />
-                              <span className="truncate max-w-md">{event.address}</span>
+                            <div className="text-sm text-muted-foreground">
+                              {event.address}
                             </div>
                           )}
 
                           {/* Flags */}
                           {(event.exact_count_required || event.partial_inventory) && (
-                            <div className="flex gap-2">
+                            <div className="flex gap-1 flex-wrap">
                               {event.exact_count_required && (
-                                <Badge variant="outline" className="text-xs border-orange-400 text-orange-600">
-                                  <AlertTriangle className="h-3 w-3 mr-1" />
-                                  Exact Count
+                                <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600 px-1.5 py-0">
+                                  <AlertTriangle className="h-3 w-3 mr-0.5" />
+                                  Exact
                                 </Badge>
                               )}
                               {event.partial_inventory && (
-                                <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">
+                                <Badge variant="outline" className="text-[10px] border-purple-400 text-purple-600 px-1.5 py-0">
                                   Partial
                                 </Badge>
                               )}
@@ -212,7 +217,7 @@ export function ScheduleTypeView({
                         </div>
                       </div>
                       
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-end gap-1 shrink-0">
                         {event.invoice_number && (
                           <span className="text-xs font-mono text-muted-foreground">{event.invoice_number}</span>
                         )}
@@ -220,7 +225,7 @@ export function ScheduleTypeView({
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                             <Edit className="h-3 w-3" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
@@ -267,7 +272,7 @@ export function ScheduleTypeView({
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                           <Edit className="h-3 w-3" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -309,7 +314,7 @@ export function ScheduleTypeView({
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                         <Edit className="h-3 w-3" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => onDeleteEvent(event.id)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
