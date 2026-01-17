@@ -613,18 +613,26 @@ export type Database = {
           arrival_note: string | null
           client_id: string | null
           client_name: string
+          client_onsite: boolean | null
           corporate_contact: string | null
           created_at: string
           created_by: string | null
           email_data_to: string | null
+          end_date: string | null
+          event_title: string | null
+          event_type: Database["public"]["Enums"]["schedule_event_type"] | null
+          exact_count_required: boolean | null
           final_invoice_to: string | null
           hotel_info: string | null
           id: string
           invoice_number: string | null
           is_travel_day: boolean | null
           job_date: string
+          location_from: string | null
+          location_to: string | null
           notes: string | null
           onsite_contact: string | null
+          partial_inventory: boolean | null
           phone: string | null
           previous_inventory_value: string | null
           special_notes: string | null
@@ -640,18 +648,26 @@ export type Database = {
           arrival_note?: string | null
           client_id?: string | null
           client_name: string
+          client_onsite?: boolean | null
           corporate_contact?: string | null
           created_at?: string
           created_by?: string | null
           email_data_to?: string | null
+          end_date?: string | null
+          event_title?: string | null
+          event_type?: Database["public"]["Enums"]["schedule_event_type"] | null
+          exact_count_required?: boolean | null
           final_invoice_to?: string | null
           hotel_info?: string | null
           id?: string
           invoice_number?: string | null
           is_travel_day?: boolean | null
           job_date: string
+          location_from?: string | null
+          location_to?: string | null
           notes?: string | null
           onsite_contact?: string | null
+          partial_inventory?: boolean | null
           phone?: string | null
           previous_inventory_value?: string | null
           special_notes?: string | null
@@ -667,18 +683,26 @@ export type Database = {
           arrival_note?: string | null
           client_id?: string | null
           client_name?: string
+          client_onsite?: boolean | null
           corporate_contact?: string | null
           created_at?: string
           created_by?: string | null
           email_data_to?: string | null
+          end_date?: string | null
+          event_title?: string | null
+          event_type?: Database["public"]["Enums"]["schedule_event_type"] | null
+          exact_count_required?: boolean | null
           final_invoice_to?: string | null
           hotel_info?: string | null
           id?: string
           invoice_number?: string | null
           is_travel_day?: boolean | null
           job_date?: string
+          location_from?: string | null
+          location_to?: string | null
           notes?: string | null
           onsite_contact?: string | null
+          partial_inventory?: boolean | null
           phone?: string | null
           previous_inventory_value?: string | null
           special_notes?: string | null
@@ -993,6 +1017,7 @@ export type Database = {
         | "out_for_final"
         | "to_be_invoiced"
         | "final_approved"
+      schedule_event_type: "work" | "travel" | "off" | "note"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1140,6 +1165,7 @@ export const Constants = {
         "to_be_invoiced",
         "final_approved",
       ],
+      schedule_event_type: ["work", "travel", "off", "note"],
     },
   },
 } as const
