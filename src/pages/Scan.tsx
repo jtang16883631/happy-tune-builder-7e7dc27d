@@ -631,18 +631,29 @@ const Scan = () => {
 
   // Template Selection View
   if (!selectedTemplate) {
+    // Sort templates by inv_date (newest first)
+    const sortedTemplates = [...templates].sort((a, b) => {
+      if (!a.inv_date && !b.inv_date) return 0;
+      if (!a.inv_date) return 1;
+      if (!b.inv_date) return -1;
+      return new Date(b.inv_date).getTime() - new Date(a.inv_date).getTime();
+    });
+
     return (
       <AppLayout>
-        <div className="space-y-6">
-          <div>
+        <div className="space-y-8">
+          <div className="text-center py-4">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-4">
+              <ScanBarcode className="h-7 w-7 text-primary" />
+            </div>
             <h1 className="text-3xl font-bold tracking-tight">Scanner</h1>
-            <p className="text-muted-foreground mt-1">
-              Select a data template to start scanning
+            <p className="text-muted-foreground mt-2 max-w-md mx-auto">
+              Select a data template to start scanning inventory
             </p>
           </div>
 
-          {templates.length === 0 ? (
-            <Card className="border-dashed">
+          {sortedTemplates.length === 0 ? (
+            <Card className="border-dashed max-w-md mx-auto">
               <CardContent className="py-16 text-center">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
                   <FileText className="h-8 w-8 text-muted-foreground" />
@@ -660,25 +671,35 @@ const Scan = () => {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {templates.map((template) => (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {sortedTemplates.map((template, index) => (
                 <Card 
                   key={template.id}
-                  className="cursor-pointer hover:border-primary transition-colors"
+                  className="group cursor-pointer border-2 hover:border-primary hover:shadow-lg transition-all duration-200 overflow-hidden"
                   onClick={() => handleSelectTemplate(template)}
                 >
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg font-medium line-clamp-2">
-                      {template.name}
-                    </CardTitle>
+                  <div className="h-1.5 bg-gradient-to-r from-primary/60 to-primary" />
+                  <CardHeader className="pb-2 pt-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base font-semibold line-clamp-1 group-hover:text-primary transition-colors">
+                        {template.name}
+                      </CardTitle>
+                      {index === 0 && template.inv_date && (
+                        <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                          Latest
+                        </span>
+                      )}
+                    </div>
                   </CardHeader>
-                  <CardContent className="space-y-2 text-sm text-muted-foreground">
+                  <CardContent className="space-y-3 pb-4">
                     {template.facility_name && (
-                      <p className="truncate">{template.facility_name}</p>
+                      <p className="text-sm text-primary/80 font-medium truncate">
+                        {template.facility_name}
+                      </p>
                     )}
                     {template.inv_date && (
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="h-3.5 w-3.5" />
                         <span>{formatDate(template.inv_date)}</span>
                       </div>
                     )}
