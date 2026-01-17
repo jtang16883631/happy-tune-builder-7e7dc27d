@@ -964,6 +964,15 @@ export type Database = {
       is_developer: { Args: { _user_id: string }; Returns: boolean }
       is_owner: { Args: { _user_id: string }; Returns: boolean }
       is_privileged: { Args: { _user_id: string }; Returns: boolean }
+      is_room_admin: {
+        Args: { _room_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_room_member: {
+        Args: { _room_id: string; _user_id: string }
+        Returns: boolean
+      }
+      room_has_members: { Args: { _room_id: string }; Returns: boolean }
     }
     Enums: {
       app_role:
