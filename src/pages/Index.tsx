@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +42,7 @@ interface ImportProgress {
   successful: number;
   failed: number;
   errors: string[];
+  currentGroup?: string;
 }
 
 const Index = () => {
@@ -99,47 +101,66 @@ const Index = () => {
   };
 
   const extractInvNumber = (fileName: string): string | null => {
-    const match = fileName.match(/\b(\d{7,9})\b/);
-    return match ? match[1] : null;
+    // 更宽松：支持 6~12 位数字；取最长的一段作为 INV
+    const matches = fileName.match(/\d{6,12}/g);
+    if (!matches || matches.length === 0) return null;
+    return matches.sort((a, b) => b.length - a.length)[0];
   };
 
   const isTicketFile = (fileName: string): boolean => {
     const s = fileName.toLowerCase();
-    return s.includes('jobticket') || s.includes('jobtickettemplate') || s.startsWith('jc ');
+    return (
+      s.includes('jobticket') ||
+      s.includes('job ticket') ||
+      s.includes('job_ticket') ||
+      s.includes('jobtickettemplate') ||
+      s.startsWith('jc ') ||
+      s.startsWith('jt ') ||
+      s.includes(' ticket')
+    );
   };
 
   const isCostFile = (fileName: string): boolean => {
     const s = fileName.toLowerCase();
-    return s.includes('cost data');
+    return s.includes('cost data') || s.includes('costdata') || (s.includes('cost') && s.includes('data'));
   };
 
   const groupFiles = (files: FileList): FileGroup[] => {
-    const costFiles: { [inv: string]: File } = {};
-    const jobTicketFiles: { [inv: string]: File } = {};
+    const costFiles: Record<string, File[]> = {};
+    const jobTicketFiles: Record<string, File[]> = {};
 
-    Array.from(files).forEach(file => {
+    Array.from(files).forEach((file) => {
       const inv = extractInvNumber(file.name);
       if (!inv) return;
 
       if (isCostFile(file.name)) {
-        costFiles[inv] = file;
+        costFiles[inv] = costFiles[inv] || [];
+        costFiles[inv].push(file);
       } else if (isTicketFile(file.name)) {
-        jobTicketFiles[inv] = file;
+        jobTicketFiles[inv] = jobTicketFiles[inv] || [];
+        jobTicketFiles[inv].push(file);
       }
     });
 
     const groups: FileGroup[] = [];
-    for (const inv of Object.keys(costFiles)) {
-      if (jobTicketFiles[inv]) {
+    const invs = new Set([...Object.keys(costFiles), ...Object.keys(jobTicketFiles)]);
+
+    for (const inv of Array.from(invs)) {
+      const costs = costFiles[inv] || [];
+      const tickets = jobTicketFiles[inv] || [];
+      const pairCount = Math.min(costs.length, tickets.length);
+
+      for (let i = 0; i < pairCount; i++) {
         groups.push({
-          name: inv,
-          costFile: costFiles[inv],
-          jobTicketFile: jobTicketFiles[inv],
+          name: pairCount > 1 ? `${inv}-${i + 1}` : inv,
+          costFile: costs[i],
+          jobTicketFile: tickets[i],
         });
       }
     }
 
-    return groups;
+    // 稳定排序，保证顺序可预测
+    return groups.sort((a, b) => a.name.localeCompare(b.name));
   };
 
   const handleBulkImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,42 +178,53 @@ const Index = () => {
       return;
     }
 
-    setImportProgress({
-      status: 'parsing',
-      total: groups.length,
-      processed: 0,
-      successful: 0,
-      failed: 0,
-      errors: [],
+    toast({
+      title: 'Import started',
+      description: `Detected ${groups.length} pair(s). Importing now...`,
+    });
+
+    flushSync(() => {
+      setImportProgress({
+        status: 'parsing',
+        total: groups.length,
+        processed: 0,
+        successful: 0,
+        failed: 0,
+        errors: [],
+        currentGroup: groups[0]?.name,
+      });
     });
 
     let successful = 0;
     let failed = 0;
     const errors: string[] = [];
 
-    // Process all groups sequentially
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
 
-      // Update progress before processing each group
-      setImportProgress(prev => ({
-        ...prev,
-        status: 'importing',
-        processed: i,
-      }));
+      flushSync(() => {
+        setImportProgress((prev) => ({
+          ...prev,
+          status: 'importing',
+          processed: i,
+          currentGroup: group.name,
+        }));
+      });
+
+      // 让浏览器有机会渲染进度条（避免React 18批处理导致一直0）
+      await new Promise((r) => setTimeout(r, 0));
 
       try {
         const costData = await parseExcelFile(group.costFile!);
         const jobTicketData = await parseExcelFile(group.jobTicketFile!);
 
-        // Pass skipRefetch=true to avoid refetching templates after each import
         const result = await importTemplate(
           group.name,
           costData.rows,
           jobTicketData.rawData,
           group.costFile!.name,
           group.jobTicketFile!.name,
-          true // skipRefetch
+          true
         );
 
         if (result.success) {
@@ -206,24 +238,35 @@ const Index = () => {
         errors.push(`${group.name}: ${err.message}`);
       }
 
-      // Update progress after processing each group
-      setImportProgress(prev => ({
-        ...prev,
-        processed: i + 1,
-        successful,
-        failed,
-        errors: errors.slice(-5),
-      }));
+      flushSync(() => {
+        setImportProgress((prev) => ({
+          ...prev,
+          processed: i + 1,
+          successful,
+          failed,
+          errors: errors.slice(-5),
+        }));
+      });
     }
 
-    // Refetch templates once after all imports are complete
-    await refetch();
+    try {
+      await refetch();
+    } catch (err: any) {
+      console.error('Refetch templates failed:', err);
+    }
 
-    setImportProgress(prev => ({ ...prev, status: 'complete' }));
+    flushSync(() => {
+      setImportProgress((prev) => ({
+        ...prev,
+        status: failed > 0 ? 'error' : 'complete',
+        currentGroup: undefined,
+      }));
+    });
 
     toast({
-      title: 'Import complete',
+      title: failed > 0 ? 'Import finished with errors' : 'Import complete',
       description: `${successful} templates created, ${failed} failed.`,
+      variant: failed > 0 ? 'destructive' : 'default',
     });
 
     if (bulkInputRef.current) {
@@ -407,9 +450,11 @@ const Index = () => {
                 <div className="flex justify-between text-sm">
                   <span>
                     {importProgress.status === 'parsing' && 'Parsing files...'}
-                    {importProgress.status === 'importing' && `Importing ${importProgress.processed} of ${importProgress.total} templates`}
+                    {importProgress.status === 'importing' && (
+                      <>Importing {importProgress.processed} of {importProgress.total}{importProgress.currentGroup ? ` • ${importProgress.currentGroup}` : ''}</>
+                    )}
                     {importProgress.status === 'complete' && 'Complete!'}
-                    {importProgress.status === 'error' && 'Error occurred'}
+                    {importProgress.status === 'error' && 'Finished with errors'}
                   </span>
                   <span>{progressPercent}%</span>
                 </div>

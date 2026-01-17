@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -30,13 +30,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchUserRoles = async (userId: string) => {
+  const hardSignOut = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setUser(null);
+      setSession(null);
+      setRoles([]);
+    }
+  }, []);
+
+  const fetchUserRoles = async (userId: string, retry: boolean = true): Promise<AppRole[]> => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', userId);
 
     if (error) {
+      // Token过期：尝试刷新一次，否则强制退出让用户重新登录
+      if (retry && (error as any)?.code === 'PGRST303') {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshed.session) {
+          return fetchUserRoles(userId, false);
+        }
+        await hardSignOut();
+      }
+
       console.error('Error fetching roles:', error);
       return [];
     }
@@ -45,15 +64,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Ensure profile exists for the user (handles re-login after profile deletion)
-  const ensureProfileExists = async (user: User) => {
-    const { data: existingProfile } = await supabase
+  const ensureProfileExists = async (user: User, retry: boolean = true) => {
+    const { data: existingProfile, error: profileError } = await supabase
       .from('profiles')
       .select('id')
       .eq('id', user.id)
       .single();
 
+    if (profileError) {
+      if (retry && (profileError as any)?.code === 'PGRST303') {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshed.session) {
+          return ensureProfileExists(user, false);
+        }
+        await hardSignOut();
+        return;
+      }
+
+      // 忽略“找不到记录”的情况，其它错误打印出来
+      if ((profileError as any)?.code !== 'PGRST116') {
+        console.error('Error checking profile:', profileError);
+      }
+    }
+
     if (!existingProfile) {
-      // Profile doesn't exist, create one
       const { error } = await supabase.from('profiles').insert({
         id: user.id,
         email: user.email,
@@ -63,6 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
+        if (retry && (error as any)?.code === 'PGRST303') {
+          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshed.session) {
+            return ensureProfileExists(user, false);
+          }
+          await hardSignOut();
+          return;
+        }
         console.error('Error creating profile:', error);
       }
     }
@@ -100,20 +142,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // THEN check for existing session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      let nextSession = session;
 
-      if (session?.user) {
-        // Ensure profile exists (handles re-login after deletion)
-        await ensureProfileExists(session.user);
-        const userRoles = await fetchUserRoles(session.user.id);
+      // 如果已接近过期，主动刷新一次，避免后续请求直接 401
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (nextSession?.expires_at && nextSession.expires_at - nowSec < 60) {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshed.session) {
+          nextSession = refreshed.session;
+        } else {
+          await hardSignOut();
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      setSession(nextSession);
+      setUser(nextSession?.user ?? null);
+
+      if (nextSession?.user) {
+        await ensureProfileExists(nextSession.user);
+        const userRoles = await fetchUserRoles(nextSession.user.id);
         setRoles(userRoles);
       }
       setIsLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [fetchUserRoles, ensureProfileExists, hardSignOut]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const interval = window.setInterval(async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const expiresAt = session.expires_at;
+      if (!expiresAt) return;
+
+      // 60秒内过期就刷新
+      if (expiresAt - nowSec < 60) {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError && refreshed.session) {
+          setSession(refreshed.session);
+          setUser(refreshed.session.user ?? null);
+        } else {
+          await hardSignOut();
+        }
+      }
+    }, 30_000);
+
+    return () => window.clearInterval(interval);
+  }, [session, hardSignOut]);
 
   const signInWithGoogle = async () => {
     const redirectUrl = `${window.location.origin}/`;
@@ -129,10 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setRoles([]);
+    await hardSignOut();
   };
 
   const isOwner = roles.includes('owner');

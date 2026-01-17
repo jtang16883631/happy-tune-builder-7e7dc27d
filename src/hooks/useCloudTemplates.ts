@@ -281,7 +281,7 @@ export function useCloudTemplates() {
         for (let i = 0; i < costInserts.length; i += batchSize) {
           const batch = costInserts.slice(i, i + batchSize);
           const { error: costError } = await supabase.from('template_cost_items').insert(batch);
-          if (costError) console.error('Error inserting cost items batch:', costError);
+          if (costError) throw costError;
         }
 
         // Only refetch if not in bulk import mode
