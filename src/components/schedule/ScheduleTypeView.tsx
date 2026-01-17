@@ -3,27 +3,23 @@ import { format, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import {
   Plane,
   Briefcase,
   Coffee,
   FileText,
   MapPin,
-  Users,
-  Clock,
   Edit,
   Trash2,
-  CalendarDays,
-  TrendingUp,
+  Clock,
+  Hotel,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   ScheduleEvent,
   TeamMember,
-  EVENT_TYPE_CONFIG,
   groupEventsByType,
-  ScheduleEventType,
 } from '@/hooks/useScheduleEvents';
 
 interface ScheduleTypeViewProps {
@@ -32,13 +28,6 @@ interface ScheduleTypeViewProps {
   onEditEvent: (event: ScheduleEvent) => void;
   onDeleteEvent: (id: string) => void;
 }
-
-const EVENT_TYPE_ICONS = {
-  work: Briefcase,
-  travel: Plane,
-  off: Coffee,
-  note: FileText,
-};
 
 export function ScheduleTypeView({
   events,
@@ -55,232 +44,282 @@ export function ScheduleTypeView({
       .filter(Boolean) as TeamMember[];
   };
 
-  // Calculate statistics
-  const stats = useMemo(() => {
-    return {
-      totalEvents: events.length,
-      workDays: grouped.work.length,
-      travelDays: grouped.travel.length,
-      offDays: grouped.off.length,
-      notes: grouped.note.length,
-    };
-  }, [events, grouped]);
+  // Sort events by date
+  const sortByDate = (a: ScheduleEvent, b: ScheduleEvent) => 
+    new Date(a.job_date).getTime() - new Date(b.job_date).getTime();
+
+  const travelEvents = [...grouped.travel].sort(sortByDate);
+  const workEvents = [...grouped.work].sort(sortByDate);
+  const offEvents = [...grouped.off].sort(sortByDate);
+  const noteEvents = [...grouped.note].sort(sortByDate);
 
   return (
     <div className="space-y-6">
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-muted rounded-lg">
-                <CalendarDays className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{stats.totalEvents}</p>
-                <p className="text-sm text-muted-foreground">Total Events</p>
-              </div>
-            </div>
+      {/* Travel Days Section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-amber-500" />
+          <h2 className="text-lg font-semibold text-foreground">
+            Travel Days: <span className="text-muted-foreground font-normal">({travelEvents.length}Promísào)</span>
+          </h2>
+        </div>
+        
+        <Card className="bg-card">
+          <CardContent className="p-0 divide-y">
+            {travelEvents.length === 0 ? (
+              <div className="p-6 text-center text-muted-foreground">No travel days scheduled</div>
+            ) : (
+              travelEvents.map((event) => {
+                const members = getTeamMemberNames(event.team_members);
+                return (
+                  <div key={event.id} className="p-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center gap-2">
+                          <Plane className="h-4 w-4 text-amber-600" />
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300">
+                            Travel {travelEvents.indexOf(event) + 1}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">
+                              {format(parseISO(event.job_date), 'MMM d')}
+                            </span>
+                            <span className="text-foreground">
+                              {event.location_from && event.location_to 
+                                ? `${event.location_from} – ${event.location_to}`
+                                : event.location_to || event.address || 'Travel'}
+                            </span>
+                          </div>
+                          
+                          {/* Team member names */}
+                          {members.length > 0 && (
+                            <div className="text-sm text-muted-foreground">
+                              {members.map(m => m.name).join(', ')}
+                            </div>
+                          )}
+
+                          {/* Travel/Flight info */}
+                          {event.travel_info && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Plane className="h-3 w-3" />
+                              Flight: {event.travel_info}
+                            </div>
+                          )}
+
+                          {/* Hotel info */}
+                          {event.hotel_info && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Hotel className="h-3 w-3" />
+                              {event.hotel_info}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         </Card>
-        {(Object.keys(EVENT_TYPE_CONFIG) as ScheduleEventType[]).map((type) => {
-          const config = EVENT_TYPE_CONFIG[type];
-          const Icon = EVENT_TYPE_ICONS[type];
-          const count = grouped[type].length;
-
-          return (
-            <Card key={type}>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-3">
-                  <div className={cn('p-2 rounded-lg', config.bgClass)}>
-                    <Icon className={cn('h-5 w-5', config.textClass)} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{count}</p>
-                    <p className="text-sm text-muted-foreground">{config.label}s</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
       </div>
 
-      {/* Grouped Event Lists */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Travel Days Section */}
-        <TypeGroupCard
-          type="travel"
-          events={grouped.travel}
-          teamMembers={teamMembers}
-          onEditEvent={onEditEvent}
-          onDeleteEvent={onDeleteEvent}
-          getTeamMemberNames={getTeamMemberNames}
-        />
+      {/* Work Days Section */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-primary" />
+          <h2 className="text-lg font-semibold text-foreground">
+            Work Days: <span className="text-muted-foreground font-normal">({workEvents.length}Promísào)</span>
+          </h2>
+        </div>
+        
+        <Card className="bg-card">
+          <CardContent className="p-0 divide-y">
+            {workEvents.length === 0 ? (
+              <div className="p-6 text-center text-muted-foreground">No work days scheduled</div>
+            ) : (
+              workEvents.map((event) => {
+                const members = getTeamMemberNames(event.team_members);
+                return (
+                  <div key={event.id} className="p-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="h-4 w-4 text-primary" />
+                          <span className="text-sm text-muted-foreground">
+                            {format(parseISO(event.job_date), 'EEEE, MMM d')}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="font-medium text-foreground">
+                            {event.start_time && (
+                              <span className="text-muted-foreground">{event.start_time}- </span>
+                            )}
+                            {event.client_name}
+                          </div>
+                          
+                          {/* Team member badges */}
+                          {members.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {members.map((member) => (
+                                <Badge
+                                  key={member.id}
+                                  variant="secondary"
+                                  className="text-xs font-medium"
+                                  style={member.color ? { backgroundColor: member.color, color: '#fff' } : undefined}
+                                >
+                                  {member.name.split(' ')[0]}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
 
-        {/* Work Days Section */}
-        <TypeGroupCard
-          type="work"
-          events={grouped.work}
-          teamMembers={teamMembers}
-          onEditEvent={onEditEvent}
-          onDeleteEvent={onDeleteEvent}
-          getTeamMemberNames={getTeamMemberNames}
-        />
+                          {/* Address */}
+                          {event.address && (
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                              <MapPin className="h-3 w-3" />
+                              <span className="truncate max-w-md">{event.address}</span>
+                            </div>
+                          )}
 
-        {/* Off Days Section */}
-        <TypeGroupCard
-          type="off"
-          events={grouped.off}
-          teamMembers={teamMembers}
-          onEditEvent={onEditEvent}
-          onDeleteEvent={onDeleteEvent}
-          getTeamMemberNames={getTeamMemberNames}
-        />
-
-        {/* Notes Section */}
-        <TypeGroupCard
-          type="note"
-          events={grouped.note}
-          teamMembers={teamMembers}
-          onEditEvent={onEditEvent}
-          onDeleteEvent={onDeleteEvent}
-          getTeamMemberNames={getTeamMemberNames}
-        />
+                          {/* Flags */}
+                          {(event.exact_count_required || event.partial_inventory) && (
+                            <div className="flex gap-2">
+                              {event.exact_count_required && (
+                                <Badge variant="outline" className="text-xs border-orange-400 text-orange-600">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Exact Count
+                                </Badge>
+                              )}
+                              {event.partial_inventory && (
+                                <Badge variant="outline" className="text-xs border-purple-400 text-purple-600">
+                                  Partial
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-1">
+                        {event.invoice_number && (
+                          <span className="text-xs font-mono text-muted-foreground">{event.invoice_number}</span>
+                        )}
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </div>
-  );
-}
 
-// Type Group Card Component
-function TypeGroupCard({
-  type,
-  events,
-  teamMembers,
-  onEditEvent,
-  onDeleteEvent,
-  getTeamMemberNames,
-}: {
-  type: ScheduleEventType;
-  events: ScheduleEvent[];
-  teamMembers: TeamMember[];
-  onEditEvent: (event: ScheduleEvent) => void;
-  onDeleteEvent: (id: string) => void;
-  getTeamMemberNames: (ids: string[] | null) => TeamMember[];
-}) {
-  const config = EVENT_TYPE_CONFIG[type];
-  const Icon = EVENT_TYPE_ICONS[type];
-
-  // Sort events by date
-  const sortedEvents = [...events].sort(
-    (a, b) => new Date(a.job_date).getTime() - new Date(b.job_date).getTime()
-  );
-
-  return (
-    <Card className={cn('overflow-hidden')}>
-      <CardHeader className={cn('py-3', config.bgClass)}>
-        <CardTitle className={cn('flex items-center gap-2', config.textClass)}>
-          <Icon className="h-5 w-5" />
-          {config.label}s ({events.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        {sortedEvents.length === 0 ? (
-          <div className="p-6 text-center text-muted-foreground">
-            No {config.label.toLowerCase()}s scheduled
+      {/* Off Days Section */}
+      {offEvents.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-slate-400" />
+            <h2 className="text-lg font-semibold text-foreground">
+              Off Days: <span className="text-muted-foreground font-normal">({offEvents.length})</span>
+            </h2>
           </div>
-        ) : (
-          <div className="divide-y max-h-[400px] overflow-y-auto">
-            {sortedEvents.map((event) => {
-              const members = getTeamMemberNames(event.team_members);
-
-              return (
-                <div
-                  key={event.id}
-                  className="p-4 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      {/* Date */}
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                        <CalendarDays className="h-4 w-4" />
-                        {format(parseISO(event.job_date), 'EEE, MMM d, yyyy')}
-                        {event.end_date && event.end_date !== event.job_date && (
-                          <span>→ {format(parseISO(event.end_date), 'MMM d')}</span>
+          
+          <Card className="bg-card">
+            <CardContent className="p-0 divide-y">
+              {offEvents.map((event) => {
+                const members = getTeamMemberNames(event.team_members);
+                return (
+                  <div key={event.id} className="p-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <Coffee className="h-4 w-4 text-slate-500" />
+                        <span className="text-sm text-muted-foreground">
+                          {format(parseISO(event.job_date), 'MMM d')}
+                        </span>
+                        <span className="font-medium">{event.event_title || 'Off'}</span>
+                        {members.length > 0 && (
+                          <span className="text-sm text-muted-foreground">
+                            ({members.map(m => m.name).join(', ')})
+                          </span>
                         )}
                       </div>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-                      {/* Title/Client */}
-                      <p className="font-medium truncate">
-                        {type === 'work'
-                          ? event.client_name
-                          : event.event_title || config.label}
-                      </p>
-
-                      {/* Location */}
-                      {type === 'travel' && (event.location_from || event.location_to) && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                          <MapPin className="h-3 w-3" />
-                          {event.location_from && event.location_to
-                            ? `${event.location_from} → ${event.location_to}`
-                            : event.location_from || event.location_to}
-                        </p>
-                      )}
-
-                      {type === 'work' && event.address && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                          <MapPin className="h-3 w-3" />
-                          <span className="truncate">{event.address}</span>
-                        </p>
-                      )}
-
-                      {/* Time */}
-                      {event.start_time && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                          <Clock className="h-3 w-3" />
-                          {event.start_time}
-                        </p>
-                      )}
-
-                      {/* Team Members */}
-                      {members.length > 0 && (
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <Users className="h-3 w-3 text-muted-foreground" />
-                          {members.map((member) => (
-                            <Badge
-                              key={member.id}
-                              variant="secondary"
-                              className="text-xs"
-                              style={member.color ? { backgroundColor: member.color, color: '#fff' } : undefined}
-                            >
-                              {member.name}
-                            </Badge>
-                          ))}
-                        </div>
+      {/* Notes Section */}
+      {noteEvents.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-blue-500" />
+            <h2 className="text-lg font-semibold text-foreground">
+              Notes: <span className="text-muted-foreground font-normal">({noteEvents.length})</span>
+            </h2>
+          </div>
+          
+          <Card className="bg-card">
+            <CardContent className="p-0 divide-y">
+              {noteEvents.map((event) => (
+                <div key={event.id} className="p-4 hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm text-muted-foreground">
+                        {format(parseISO(event.job_date), 'MMM d')}
+                      </span>
+                      <span className="font-medium">{event.event_title || 'Note'}</span>
+                      {event.notes && (
+                        <span className="text-sm text-muted-foreground">- {event.notes}</span>
                       )}
                     </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-1 shrink-0">
-                      <Button size="sm" variant="ghost" onClick={() => onEditEvent(event)}>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => onEditEvent(event)}>
                         <Edit className="h-3 w-3" />
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive"
-                        onClick={() => onDeleteEvent(event.id)}
-                      >
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => onDeleteEvent(event.id)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
   );
 }
