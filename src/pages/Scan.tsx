@@ -1128,10 +1128,28 @@ const Scan = () => {
   const handleQtyExpressionKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, rowIndex: number) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleQtyBlur(rowIndex);
       
-      // Then run original QTY key handler logic
-      const currentRow = scanRows[rowIndex];
+      // First evaluate the expression
+      const rowId = scanRows[rowIndex].id;
+      const expression = qtyExpressions[rowId];
+      let evaluatedQty = scanRows[rowIndex].qty;
+      
+      if (expression !== undefined) {
+        const result = evaluateQtyExpression(expression);
+        if (result !== null) {
+          evaluatedQty = result;
+          handleFieldChange('qty', result, rowIndex);
+        }
+        // Clear expression after evaluation
+        setQtyExpressions(prev => {
+          const next = { ...prev };
+          delete next[rowId];
+          return next;
+        });
+      }
+      
+      // Validate with the NEW qty value
+      const currentRow = { ...scanRows[rowIndex], qty: evaluatedQty };
       const { valid, errors } = validateRow(currentRow);
       
       if (!valid) {
