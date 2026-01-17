@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download } from 'lucide-react';
+import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download, GripVertical, Eye, EyeOff, Settings2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useCloudTemplates, CloudTemplate, CloudSection, TemplateStatus } from '@/hooks/useCloudTemplates';
@@ -77,7 +77,54 @@ interface ScanRow {
 }
 
 const Scan = () => {
-  const { isLoading: authLoading, roles } = useAuth();
+  const { isLoading: authLoading, roles, user } = useAuth();
+  
+  // Track row counter for REC generation
+  const [rowCounter, setRowCounter] = useState(0);
+  
+  // User's short name for REC (e.g., "JiaweiT")
+  const [userShortName, setUserShortName] = useState('');
+  
+  // Column visibility state - hide the new columns by default except REC
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set([
+    'device', 'trade', 'generic', 'strength', 'sizeTxt', 'doseForm', 
+    'genericCode', 'deaClass', 'ahfs'
+  ]));
+  
+  // Column widths state for resizable columns
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  
+  // Fetch user profile for short name
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.id) return;
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (profile) {
+        // Generate short name: FirstNameLastInitial (e.g., "JiaweiT")
+        let shortName = '';
+        if (profile.first_name && profile.last_name) {
+          shortName = `${profile.first_name}${profile.last_name.charAt(0)}`;
+        } else if (profile.full_name) {
+          const parts = profile.full_name.trim().split(' ');
+          if (parts.length >= 2) {
+            shortName = `${parts[0]}${parts[parts.length - 1].charAt(0)}`;
+          } else {
+            shortName = parts[0];
+          }
+        }
+        setUserShortName(shortName);
+      }
+    };
+    
+    fetchUserProfile();
+  }, [user?.id]);
   const navigate = useNavigate();
   
   // Cloud templates (primary when online)
@@ -430,19 +477,37 @@ const Scan = () => {
     setRenameSectionDialogOpen(true);
   };
 
+  // Generate next REC value
+  const generateNextRec = useCallback(() => {
+    const nextNum = rowCounter + 1;
+    setRowCounter(nextNum);
+    return `${userShortName}${String(nextNum).padStart(3, '0')}`;
+  }, [rowCounter, userShortName]);
+
   // Lookup NDC and update row with mapping (by column position, not name):
   // TIME = laptop real time
   // MIS Count Method = FDA Column P (count_method)
   // Item Number = Cost Data Column E (material)
   // Med Desc = Cost Data Column B (material_description)
   // MERIDIAN DESC = FDA Column B (meridian_desc)
+  // TRADE = FDA Column C (trade)
+  // GENERIC = FDA Column D (generic)
+  // STRENGTH = FDA Column E (strength)
   // PACK SZ = FDA Column F (package_size)
   // FDA SIZE = FDA Column G (fda_size)
+  // SIZE TXT = FDA Column H (size_txt)
+  // DOSE FORM = FDA Column I (dose_form)
+  // MANUFACTURER = FDA Column J (manufacturer)
+  // GENERIC CODE = FDA Column K (generic_code)
+  // DEA CLASS = FDA Column L (dea_class)
+  // AHFS = FDA Column M (ahfs)
   // SOURCE = Cost Data Column D (source)
   // Pack Cost = Cost Data Column C (unit_price)
   // MIS Divisor = FDA Column O (meridian_divisor)
   // Unit Cost = Pack Cost / MIS Divisor
   // Extended = Unit Cost * QTY
+  // DEVICE = blank
+  // REC = auto-generated from user name
   const lookupNDC = useCallback(async (ndc: string, rowIndex: number) => {
     if (!ndc || ndc.length < 10 || !selectedTemplate) return;
 
@@ -462,11 +527,38 @@ const Scan = () => {
     // MERIDIAN DESC from FDA Column B (meridian_desc)
     const meridianDesc = fdaResult?.meridian_desc || '';
     
+    // TRADE from FDA Column C
+    const trade = fdaResult?.trade || '';
+    
+    // GENERIC from FDA Column D
+    const generic = fdaResult?.generic || '';
+    
+    // STRENGTH from FDA Column E
+    const strength = fdaResult?.strength || '';
+    
     // PACK SZ from FDA Column F (package_size)
     const packSz = fdaResult?.package_size || '';
     
     // FDA SIZE from FDA Column G (fda_size)
     const fdaSize = fdaResult?.fda_size || '';
+    
+    // SIZE TXT from FDA Column H
+    const sizeTxt = fdaResult?.size_txt || '';
+    
+    // DOSE FORM from FDA Column I
+    const doseForm = fdaResult?.dose_form || '';
+    
+    // MANUFACTURER from FDA Column J
+    const manufacturer = fdaResult?.manufacturer || costItem?.manufacturer || '';
+    
+    // GENERIC CODE from FDA Column K
+    const genericCode = fdaResult?.generic_code || '';
+    
+    // DEA CLASS from FDA Column L
+    const deaClass = fdaResult?.dea_class || '';
+    
+    // AHFS from FDA Column M
+    const ahfs = fdaResult?.ahfs || '';
     
     // Pack Cost from Cost Data Column C (unit_price)
     const packCost = costItem?.unit_price !== null && costItem?.unit_price !== undefined 
@@ -494,27 +586,38 @@ const Scan = () => {
       extended = unitCost * currentQty;
     }
     
-    // Manufacturer from FDA or Cost Data
-    const manufacturer = fdaResult?.manufacturer || costItem?.manufacturer || '';
+    // Generate REC if not already set
+    const currentRec = scanRows[rowIndex].rec;
+    const rec = currentRec || generateNextRec();
     
     setScanRows(prev => {
       const updated = [...prev];
       updated[rowIndex] = {
         ...updated[rowIndex],
         ndc: cleanNdc,
+        rec,
+        device: '', // Device stays blank
         time: new Date().toLocaleTimeString(), // Real time from laptop
         misCountMethod,
         itemNumber,
         medDesc,
         meridianDesc,
+        trade,
+        generic,
+        strength,
         packSz,
         fdaSize,
+        sizeTxt,
+        doseForm,
         packCost,
         source,
         misDivisor,
         unitCost,
         extended,
         manufacturer,
+        genericCode,
+        deaClass,
+        ahfs,
       };
       return updated;
     });
@@ -528,7 +631,7 @@ const Scan = () => {
     });
     
     // Don't auto-focus next row's NDC here - we want to focus QTY first
-  }, [fdaLookup, getCostItemByNDC, selectedTemplate, scanRows]);
+  }, [fdaLookup, getCostItemByNDC, selectedTemplate, scanRows, generateNextRec, selectedSection, createEmptyRow]);
 
   // Handle field change - recalculate Extended when QTY or Unit Cost changes
   const handleFieldChange = (field: keyof ScanRow, value: string | number | null, rowIndex: number) => {
@@ -887,42 +990,99 @@ const Scan = () => {
   }
 
   // Column definitions - ALL cells are now editable
+  // Default widths in pixels for resizable columns
+  const defaultWidths: Record<string, number> = {
+    loc: 80, device: 96, rec: 100, time: 96, ndc: 128, scannedNdc: 144,
+    qty: 80, misDivisor: 96, misCountMethod: 128, itemNumber: 112,
+    medDesc: 192, meridianDesc: 192, trade: 128, generic: 144, strength: 112,
+    packSz: 96, fdaSize: 96, sizeTxt: 96, doseForm: 112, manufacturer: 144,
+    genericCode: 128, deaClass: 112, ahfs: 112, source: 96,
+    packCost: 112, unitCost: 112, extended: 112, blank: 80,
+    sheetType: 112, auditCriteria: 128, originalQty: 112, auditorInitials: 128,
+    results: 112, additionalNotes: 192
+  };
+
   const columns = [
-    { key: 'loc', label: 'LOC', width: 'w-20', editable: true },
-    { key: 'device', label: 'Device', width: 'w-24', editable: true },
-    { key: 'rec', label: 'REC', width: 'w-20', editable: true },
-    { key: 'time', label: 'TIME', width: 'w-24', editable: true },
-    { key: 'ndc', label: 'NDC', width: 'w-32', editable: true, isNdcInput: true },
-    { key: 'scannedNdc', label: 'Scanned NDC', width: 'w-36', editable: true, isNdcInput: true },
-    { key: 'qty', label: 'QTY', width: 'w-20', editable: true, type: 'number' },
-    { key: 'misDivisor', label: 'MIS Divisor', width: 'w-24', editable: true, type: 'number' },
-    { key: 'misCountMethod', label: 'MIS Count Method', width: 'w-32', editable: true },
-    { key: 'itemNumber', label: 'Item Number', width: 'w-28', editable: true },
-    { key: 'medDesc', label: 'Med Desc', width: 'w-48', editable: true },
-    { key: 'meridianDesc', label: 'MERIDIAN DESC', width: 'w-48', editable: true },
-    { key: 'trade', label: 'TRADE', width: 'w-32', editable: true },
-    { key: 'generic', label: 'GENERIC', width: 'w-36', editable: true },
-    { key: 'strength', label: 'STRENGTH', width: 'w-28', editable: true },
-    { key: 'packSz', label: 'PACK SZ', width: 'w-24', editable: true },
-    { key: 'fdaSize', label: 'FDA SIZE', width: 'w-24', editable: true },
-    { key: 'sizeTxt', label: 'SIZE TXT', width: 'w-24', editable: true },
-    { key: 'doseForm', label: 'DOSE FORM', width: 'w-28', editable: true },
-    { key: 'manufacturer', label: 'MANUFACTURER', width: 'w-36', editable: true },
-    { key: 'genericCode', label: 'GENERIC CODE', width: 'w-32', editable: true },
-    { key: 'deaClass', label: 'DEA CLASS', width: 'w-28', editable: true },
-    { key: 'ahfs', label: 'AHFS', width: 'w-28', editable: true },
-    { key: 'source', label: 'SOURCE', width: 'w-24', editable: true },
-    { key: 'packCost', label: 'Pack Cost', width: 'w-28', editable: true, type: 'currency' },
-    { key: 'unitCost', label: 'Unit Cost', width: 'w-28', editable: true, type: 'currency' },
-    { key: 'extended', label: 'Extended', width: 'w-28', editable: true, type: 'currency' },
-    { key: 'blank', label: '$-', width: 'w-20', editable: true },
-    { key: 'sheetType', label: 'Sheet Type', width: 'w-28', editable: true },
-    { key: 'auditCriteria', label: 'Audit Criteria', width: 'w-32', editable: true },
-    { key: 'originalQty', label: 'Original QTY', width: 'w-28', editable: true, type: 'number' },
-    { key: 'auditorInitials', label: 'Auditor Initials', width: 'w-32', editable: true },
-    { key: 'results', label: 'Results', width: 'w-28', editable: true },
-    { key: 'additionalNotes', label: 'Additional Notes', width: 'w-48', editable: true },
+    { key: 'loc', label: 'LOC', editable: true },
+    { key: 'device', label: 'Device', editable: true, hideable: true },
+    { key: 'rec', label: 'REC', editable: true },
+    { key: 'time', label: 'TIME', editable: true },
+    { key: 'ndc', label: 'NDC', editable: true, isNdcInput: true },
+    { key: 'scannedNdc', label: 'Scanned NDC', editable: true, isNdcInput: true },
+    { key: 'qty', label: 'QTY', editable: true, type: 'number' },
+    { key: 'misDivisor', label: 'MIS Divisor', editable: true, type: 'number' },
+    { key: 'misCountMethod', label: 'MIS Count Method', editable: true },
+    { key: 'itemNumber', label: 'Item Number', editable: true },
+    { key: 'medDesc', label: 'Med Desc', editable: true },
+    { key: 'meridianDesc', label: 'MERIDIAN DESC', editable: true },
+    { key: 'trade', label: 'TRADE', editable: true, hideable: true },
+    { key: 'generic', label: 'GENERIC', editable: true, hideable: true },
+    { key: 'strength', label: 'STRENGTH', editable: true, hideable: true },
+    { key: 'packSz', label: 'PACK SZ', editable: true },
+    { key: 'fdaSize', label: 'FDA SIZE', editable: true },
+    { key: 'sizeTxt', label: 'SIZE TXT', editable: true, hideable: true },
+    { key: 'doseForm', label: 'DOSE FORM', editable: true, hideable: true },
+    { key: 'manufacturer', label: 'MANUFACTURER', editable: true },
+    { key: 'genericCode', label: 'GENERIC CODE', editable: true, hideable: true },
+    { key: 'deaClass', label: 'DEA CLASS', editable: true, hideable: true },
+    { key: 'ahfs', label: 'AHFS', editable: true, hideable: true },
+    { key: 'source', label: 'SOURCE', editable: true },
+    { key: 'packCost', label: 'Pack Cost', editable: true, type: 'currency' },
+    { key: 'unitCost', label: 'Unit Cost', editable: true, type: 'currency' },
+    { key: 'extended', label: 'Extended', editable: true, type: 'currency' },
+    { key: 'blank', label: '$-', editable: true },
+    { key: 'sheetType', label: 'Sheet Type', editable: true },
+    { key: 'auditCriteria', label: 'Audit Criteria', editable: true },
+    { key: 'originalQty', label: 'Original QTY', editable: true, type: 'number' },
+    { key: 'auditorInitials', label: 'Auditor Initials', editable: true },
+    { key: 'results', label: 'Results', editable: true },
+    { key: 'additionalNotes', label: 'Additional Notes', editable: true },
   ];
+
+  // Get column width (custom or default)
+  const getColumnWidth = (key: string) => columnWidths[key] || defaultWidths[key] || 100;
+
+  // Filter visible columns
+  const visibleColumns = columns.filter(col => !hiddenColumns.has(col.key));
+
+  // Toggle column visibility
+  const toggleColumnVisibility = (key: string) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Handle column resize start
+  const handleResizeStart = (e: React.MouseEvent, key: string) => {
+    e.preventDefault();
+    const startWidth = getColumnWidth(key);
+    resizingRef.current = { key, startX: e.clientX, startWidth };
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const diff = moveEvent.clientX - resizingRef.current.startX;
+      const newWidth = Math.max(50, resizingRef.current.startWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [resizingRef.current!.key]: newWidth }));
+    };
+    
+    const handleMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Hideable columns for settings dropdown
+  const hideableColumns = columns.filter(col => col.hideable);
 
   // Scan View (Excel-like with horizontal scroll)
   return (
@@ -1020,10 +1180,39 @@ const Scan = () => {
                   ? `Scanning in: ${selectedSection.full_section}` 
                   : 'Scan a barcode or enter NDC in "Scanned NDC" column, then press Enter'}
               </span>
+              {/* Column visibility settings */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="ml-auto gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    Toggle Hidden Columns
+                  </div>
+                  <DropdownMenuSeparator />
+                  {hideableColumns.map(col => (
+                    <DropdownMenuItem
+                      key={col.key}
+                      onClick={() => toggleColumnVisibility(col.key)}
+                      className="flex items-center justify-between"
+                    >
+                      <span>{col.label}</span>
+                      {hiddenColumns.has(col.key) ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
               <Button 
                 variant="outline" 
-                size="sm" 
-                className="ml-auto"
+                size="sm"
                 onClick={handleAddRow}
                 disabled={!selectedSection}
               >
@@ -1038,9 +1227,20 @@ const Scan = () => {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
-                      {columns.map((col) => (
-                        <TableHead key={col.key} className={`${col.width} text-xs font-medium`}>
-                          {col.label}
+                      {visibleColumns.map((col) => (
+                        <TableHead 
+                          key={col.key} 
+                          className="text-xs font-medium relative group select-none"
+                          style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}
+                        >
+                          <div className="flex items-center justify-between pr-2">
+                            <span className="truncate">{col.label}</span>
+                          </div>
+                          {/* Resize handle */}
+                          <div
+                            className="absolute right-0 top-0 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100 hover:bg-primary/20"
+                            onMouseDown={(e) => handleResizeStart(e, col.key)}
+                          />
                         </TableHead>
                       ))}
                       <TableHead className="w-12 sticky right-0 bg-muted/50 z-10"></TableHead>
@@ -1054,7 +1254,7 @@ const Scan = () => {
                         key={row.id}
                         className={`${index === activeRowIndex ? 'bg-primary/5' : ''} ${validationStatus === 'invalid' ? 'bg-destructive/10' : ''}`}
                       >
-                        {columns.map((col) => {
+                        {visibleColumns.map((col) => {
                           const value = row[col.key as keyof ScanRow];
                           
                           if (col.editable) {
@@ -1077,7 +1277,7 @@ const Scan = () => {
                             };
                             
                             return (
-                              <TableCell key={col.key} className="p-1">
+                              <TableCell key={col.key} className="p-1" style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}>
                                 <Input
                                   ref={getRef()}
                                   value={col.type === 'currency' ? (value !== null && value !== undefined ? Number(value).toFixed(2) : '') : (value?.toString() || '')}
