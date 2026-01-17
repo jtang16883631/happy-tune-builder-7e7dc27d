@@ -157,6 +157,147 @@ export type Database = {
         }
         Relationships: []
       }
+      live_tracker_jobs: {
+        Row: {
+          assigned_to: string | null
+          automation_notes: string | null
+          closed_final_date: string | null
+          comments: string | null
+          created_at: string
+          created_by: string | null
+          draft_out_date: string | null
+          group_name: string | null
+          id: string
+          invoiced_date: string | null
+          job_name: string
+          job_number: string | null
+          master_review_by: string | null
+          overdue_days: number | null
+          pricing_done: boolean | null
+          promise_invoice_number: string | null
+          ptf_sum: string | null
+          stage: Database["public"]["Enums"]["job_workflow_stage"]
+          stage_changed_at: string | null
+          template_done: string | null
+          ticket_done: string | null
+          updated_at: string
+          updates_date: string | null
+          who_has_auto: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          automation_notes?: string | null
+          closed_final_date?: string | null
+          comments?: string | null
+          created_at?: string
+          created_by?: string | null
+          draft_out_date?: string | null
+          group_name?: string | null
+          id?: string
+          invoiced_date?: string | null
+          job_name: string
+          job_number?: string | null
+          master_review_by?: string | null
+          overdue_days?: number | null
+          pricing_done?: boolean | null
+          promise_invoice_number?: string | null
+          ptf_sum?: string | null
+          stage?: Database["public"]["Enums"]["job_workflow_stage"]
+          stage_changed_at?: string | null
+          template_done?: string | null
+          ticket_done?: string | null
+          updated_at?: string
+          updates_date?: string | null
+          who_has_auto?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          automation_notes?: string | null
+          closed_final_date?: string | null
+          comments?: string | null
+          created_at?: string
+          created_by?: string | null
+          draft_out_date?: string | null
+          group_name?: string | null
+          id?: string
+          invoiced_date?: string | null
+          job_name?: string
+          job_number?: string | null
+          master_review_by?: string | null
+          overdue_days?: number | null
+          pricing_done?: boolean | null
+          promise_invoice_number?: string | null
+          ptf_sum?: string | null
+          stage?: Database["public"]["Enums"]["job_workflow_stage"]
+          stage_changed_at?: string | null
+          template_done?: string | null
+          ticket_done?: string | null
+          updated_at?: string
+          updates_date?: string | null
+          who_has_auto?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_tracker_jobs_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_tracker_jobs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_tracker_stage_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          from_stage: Database["public"]["Enums"]["job_workflow_stage"] | null
+          id: string
+          job_id: string
+          notes: string | null
+          to_stage: Database["public"]["Enums"]["job_workflow_stage"]
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          from_stage?: Database["public"]["Enums"]["job_workflow_stage"] | null
+          id?: string
+          job_id: string
+          notes?: string | null
+          to_stage: Database["public"]["Enums"]["job_workflow_stage"]
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          from_stage?: Database["public"]["Enums"]["job_workflow_stage"] | null
+          id?: string
+          job_id?: string
+          notes?: string | null
+          to_stage?: Database["public"]["Enums"]["job_workflow_stage"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_tracker_stage_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_tracker_stage_history_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "live_tracker_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -564,6 +705,18 @@ export type Database = {
         | "coordinator"
         | "owner"
         | "office_admin"
+      job_workflow_stage:
+        | "making_price_files"
+        | "pricing_complete"
+        | "files_built"
+        | "needs_automation"
+        | "jobs_on_hold"
+        | "ready_for_review"
+        | "out_on_draft"
+        | "in_for_updates"
+        | "out_for_final"
+        | "to_be_invoiced"
+        | "final_approved"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -697,6 +850,19 @@ export const Constants = {
         "coordinator",
         "owner",
         "office_admin",
+      ],
+      job_workflow_stage: [
+        "making_price_files",
+        "pricing_complete",
+        "files_built",
+        "needs_automation",
+        "jobs_on_hold",
+        "ready_for_review",
+        "out_on_draft",
+        "in_for_updates",
+        "out_for_final",
+        "to_be_invoiced",
+        "final_approved",
       ],
     },
   },
