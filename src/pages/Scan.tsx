@@ -1098,23 +1098,29 @@ const Scan = () => {
 
   // State for QTY expression input (showing raw expression while editing)
   const [qtyExpressions, setQtyExpressions] = useState<Record<string, string>>({});
+  // Keep a synchronous reference to the latest typed value (barcode scanners can type faster than state updates)
+  const qtyExpressionRef = useRef<Record<string, string>>({});
   
   // Handle QTY input change - store raw expression
   const handleQtyInputChange = (value: string, rowIndex: number) => {
     const rowId = scanRows[rowIndex].id;
+    qtyExpressionRef.current[rowId] = value;
     setQtyExpressions(prev => ({ ...prev, [rowId]: value }));
   };
   
   // Handle QTY blur - evaluate expression and update value
   const handleQtyBlur = (rowIndex: number) => {
     const rowId = scanRows[rowIndex].id;
-    const expression = qtyExpressions[rowId];
+    const expression = qtyExpressionRef.current[rowId] ?? qtyExpressions[rowId];
     
     if (expression !== undefined) {
       const result = evaluateQtyExpression(expression);
       if (result !== null) {
         handleFieldChange('qty', result, rowIndex);
       }
+
+      delete qtyExpressionRef.current[rowId];
+
       // Clear expression after blur
       setQtyExpressions(prev => {
         const next = { ...prev };
@@ -1129,9 +1135,11 @@ const Scan = () => {
     if (e.key === 'Enter') {
       e.preventDefault();
       
-      // First evaluate the expression (use the current input value; keydown can fire before React state updates)
+      // First evaluate the expression (barcode scanners / fast typing can beat state updates)
       const rowId = scanRows[rowIndex].id;
-      const rawExpression = e.currentTarget.value;
+      const refValue = qtyExpressionRef.current[rowId];
+      const domValue = e.currentTarget.value;
+      const rawExpression = (domValue && domValue.trim() !== '') ? domValue : (refValue ?? '');
       let evaluatedQty = scanRows[rowIndex].qty;
 
       const result = evaluateQtyExpression(rawExpression);
@@ -1139,6 +1147,8 @@ const Scan = () => {
         evaluatedQty = result;
         handleFieldChange('qty', result, rowIndex);
       }
+
+      delete qtyExpressionRef.current[rowId];
 
       // Clear expression after evaluation (so next focus shows computed value)
       setQtyExpressions(prev => {
