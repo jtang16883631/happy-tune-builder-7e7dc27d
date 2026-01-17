@@ -21,6 +21,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
@@ -268,24 +270,16 @@ const Chat = () => {
   const handleCreateRoom = async () => {
     if (!newRoomName.trim()) return;
 
-    // Make sure the client has a fresh auth token before hitting RLS-protected tables
-    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-    const session = refreshed.session ?? (await supabase.auth.getSession()).data.session;
-
-    if (refreshError) {
-      console.warn('refreshSession error:', refreshError);
-    }
-
-    const authedUserId = session?.user?.id;
-
-    if (!authedUserId) {
+    if (!db || !session?.user?.id) {
       toast.error('请先登录后再创建聊天室');
       navigate('/auth');
       return;
     }
 
+    const authedUserId = session.user.id;
+
     try {
-      const { data: room, error: roomError } = await supabase
+      const { data: room, error: roomError } = await db
         .from('chat_rooms')
         .insert({
           name: newRoomName.trim(),
@@ -298,7 +292,7 @@ const Chat = () => {
       if (roomError) throw roomError;
 
       // Add creator as admin member
-      const { error: memberError } = await supabase
+      const { error: memberError } = await db
         .from('chat_room_members')
         .insert({
           room_id: room.id,
@@ -321,15 +315,15 @@ const Chat = () => {
 
   // Send message
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedRoom || !user?.id) return;
+    if (!newMessage.trim() || !selectedRoom || !db || !session?.user?.id) return;
 
     setIsSending(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('chat_messages')
         .insert({
           room_id: selectedRoom.id,
-          user_id: user.id,
+          user_id: session.user.id,
           content: newMessage.trim()
         });
 
@@ -344,9 +338,10 @@ const Chat = () => {
 
   // Fetch all registered users when add member dialog opens
   const fetchAllUsers = useCallback(async () => {
+    if (!db) return;
     setIsLoadingUsers(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('profiles')
         .select('id, full_name, email, avatar_url')
         .order('full_name', { ascending: true });
@@ -358,7 +353,7 @@ const Chat = () => {
     } finally {
       setIsLoadingUsers(false);
     }
-  }, []);
+  }, [db]);
 
   // Fetch users when dialog opens
   useEffect(() => {
@@ -382,10 +377,10 @@ const Chat = () => {
 
   // Add member
   const handleAddMember = async (profileId: string) => {
-    if (!selectedRoom) return;
+    if (!selectedRoom || !db) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('chat_room_members')
         .insert({
           room_id: selectedRoom.id,
@@ -405,8 +400,9 @@ const Chat = () => {
 
   // Remove member
   const handleRemoveMember = async (memberId: string) => {
+    if (!db) return;
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('chat_room_members')
         .delete()
         .eq('id', memberId);
@@ -424,13 +420,13 @@ const Chat = () => {
 
   // Leave room
   const handleLeaveRoom = async () => {
-    if (!selectedRoom || !user?.id) return;
+    if (!selectedRoom || !db || !session?.user?.id) return;
 
-    const myMembership = members.find(m => m.user_id === user.id);
+    const myMembership = members.find(m => m.user_id === session.user.id);
     if (!myMembership) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from('chat_room_members')
         .delete()
         .eq('id', myMembership.id);
