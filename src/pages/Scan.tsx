@@ -1577,9 +1577,20 @@ const Scan = () => {
         {/* Scan Input */}
         <Card className="w-full">
           <CardContent className="p-4">
-            {/* Toolbar - buttons on left, search on right */}
+            {/* Toolbar - search and buttons on left */}
             <div className="flex items-center gap-2 mb-4 flex-wrap">
-              {/* Left side - Action buttons */}
+              {/* Search on left */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search NDC, Med Desc, REC..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 w-64 text-sm"
+                />
+              </div>
+              
+              {/* Action buttons */}
               <Button 
                 variant="outline" 
                 size="sm"
@@ -1663,18 +1674,6 @@ const Scan = () => {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-              
-              {/* Right side - Search */}
-              <div className="flex-1" />
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search NDC, Med Desc, REC..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 h-8 w-64 text-sm"
-                />
-              </div>
             </div>
 
             {/* Excel-like Table with horizontal scroll */}
