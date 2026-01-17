@@ -25,9 +25,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserCog, Crown, Code, ClipboardCheck, Search, Trash2 } from 'lucide-react';
+import { Loader2, UserCog, Crown, Code, ClipboardCheck, Search, Trash2, Briefcase } from 'lucide-react';
 
-type AppRole = 'auditor' | 'developer' | 'coordinator' | 'owner';
+type AppRole = 'auditor' | 'developer' | 'coordinator' | 'owner' | 'office_admin';
 
 interface Profile {
   id: string;
@@ -49,6 +49,7 @@ interface UserWithRoles extends Profile {
 const roleConfig: Record<AppRole, { label: string; icon: React.ElementType; color: string }> = {
   owner: { label: 'Owner', icon: Crown, color: 'bg-amber-500 text-white' },
   developer: { label: 'Developer', icon: Code, color: 'bg-purple-500 text-white' },
+  office_admin: { label: 'Office Admin', icon: Briefcase, color: 'bg-rose-500 text-white' },
   coordinator: { label: 'Coordinator', icon: ClipboardCheck, color: 'bg-blue-500 text-white' },
   auditor: { label: 'Auditor', icon: Search, color: 'bg-green-500 text-white' },
 };
@@ -191,6 +192,7 @@ const Users = () => {
   const getCurrentRole = (roles: AppRole[]): AppRole | 'none' => {
     if (roles.includes('owner')) return 'owner';
     if (roles.includes('developer')) return 'developer';
+    if (roles.includes('office_admin')) return 'office_admin';
     if (roles.includes('coordinator')) return 'coordinator';
     if (roles.includes('auditor')) return 'auditor';
     return 'none';
@@ -284,6 +286,7 @@ const Users = () => {
                           <SelectItem value="none">No Role</SelectItem>
                           <SelectItem value="auditor">Auditor</SelectItem>
                           <SelectItem value="coordinator">Coordinator</SelectItem>
+                          <SelectItem value="office_admin">Office Admin</SelectItem>
                           <SelectItem value="developer">Developer</SelectItem>
                           <SelectItem value="owner">Owner</SelectItem>
                         </SelectContent>
