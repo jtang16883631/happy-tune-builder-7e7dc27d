@@ -175,6 +175,8 @@ const Scan = () => {
   const [renameSectionDialogOpen, setRenameSectionDialogOpen] = useState(false);
   const [newSectionCode, setNewSectionCode] = useState('');
   const [newSectionDesc, setNewSectionDesc] = useState('');
+  const [newSectionCostSheet, setNewSectionCostSheet] = useState<string | null>(null);
+  const [availableCostSheets, setAvailableCostSheets] = useState<string[]>([]);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionDesc, setEditingSectionDesc] = useState('');
   
@@ -360,6 +362,25 @@ const Scan = () => {
     }
   }, [getSections]);
 
+  // Load available cost sheets for a template
+  const loadAvailableCostSheets = useCallback(async (templateId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('template_cost_items')
+        .select('sheet_name')
+        .eq('template_id', templateId)
+        .not('sheet_name', 'is', null);
+      
+      if (error) throw error;
+      
+      const uniqueSheets = [...new Set((data || []).map(d => d.sheet_name).filter(Boolean))] as string[];
+      setAvailableCostSheets(uniqueSheets);
+    } catch (err) {
+      console.error('Error loading cost sheets:', err);
+      setAvailableCostSheets([]);
+    }
+  }, []);
+
   // Handle template selection - just load sections, don't load records yet
   const handleSelectTemplate = async (template: CloudTemplate) => {
     setSelectedTemplate(template);
@@ -367,8 +388,11 @@ const Scan = () => {
     setScanRows([createEmptyRow()]); // Start with empty row
     setActiveRowIndex(0);
     
-    // Load sections for this template
-    await loadSections(template.id);
+    // Load sections and cost sheets for this template
+    await Promise.all([
+      loadSections(template.id),
+      loadAvailableCostSheets(template.id),
+    ]);
   };
 
   // Add new section
@@ -389,6 +413,7 @@ const Scan = () => {
           sect: paddedCode,
           description: newSectionDesc.trim(),
           full_section: fullSection,
+          cost_sheet: newSectionCostSheet,
         });
 
       if (error) throw error;
@@ -397,6 +422,7 @@ const Scan = () => {
       setAddSectionDialogOpen(false);
       setNewSectionCode('');
       setNewSectionDesc('');
+      setNewSectionCostSheet(null);
       await loadSections(selectedTemplate.id);
     } catch (err: any) {
       toast.error('Failed to add: ' + err.message);
@@ -1888,6 +1914,36 @@ const Scan = () => {
                 onChange={(e) => setNewSectionDesc(e.target.value)}
               />
             </div>
+            {availableCostSheets.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Cost Sheet</label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      {newSectionCostSheet || 'Select cost sheet...'}
+                      <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-full min-w-[200px]">
+                    <DropdownMenuItem onClick={() => setNewSectionCostSheet(null)}>
+                      <span className="text-muted-foreground">None</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {availableCostSheets.map((sheet) => (
+                      <DropdownMenuItem
+                        key={sheet}
+                        onClick={() => setNewSectionCostSheet(sheet)}
+                      >
+                        {sheet}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <p className="text-xs text-muted-foreground">
+                  Choose which cost data tab to use for pricing in this section
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddSectionDialogOpen(false)}>
