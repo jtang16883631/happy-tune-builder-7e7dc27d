@@ -8,6 +8,9 @@ import { cn } from '@/lib/utils';
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell';
 import { ProfileCompletionDialog } from '@/components/profile/ProfileCompletionDialog';
 import { useProfileCompletion } from '@/hooks/useProfileCompletion';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileBottomNav } from './MobileNav';
+import { MobileHeader } from './MobileHeader';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -77,6 +80,7 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(defaultCollapsed);
   const { needsCompletion, isChecking, markCompleted } = useProfileCompletion();
+  const isMobile = useIsMobile();
 
   const hasNoRole = !authLoading && roles.length === 0;
 
@@ -147,6 +151,29 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
     );
   }
 
+  // MOBILE LAYOUT
+  if (isMobile) {
+    return (
+      <>
+        <ProfileCompletionDialog open={needsCompletion && !isChecking} onComplete={markCompleted} />
+        
+        <div className="min-h-screen bg-background">
+          {/* Mobile Header */}
+          <MobileHeader />
+          
+          {/* Main Content with padding for header and bottom nav */}
+          <main className="pt-14 pb-20 px-4">
+            {children}
+          </main>
+          
+          {/* Bottom Navigation */}
+          <MobileBottomNav roles={roles as AppRole[]} allNavSections={navSections} />
+        </div>
+      </>
+    );
+  }
+
+  // DESKTOP LAYOUT
   return (
     <>
       {/* Profile Completion Dialog */}
