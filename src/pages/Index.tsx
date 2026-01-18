@@ -372,12 +372,12 @@ const Index = () => {
     setIsUpdatingCost(true);
 
     try {
-      const costData = await parseExcelFile(file);
+      const costSheets = await parseExcelFileAllSheets(file);
       let successCount = 0;
       let failCount = 0;
 
       for (const templateId of Array.from(selectedTemplates)) {
-        const result = await updateCostData(templateId, costData.rows, file.name);
+        const result = await updateCostData(templateId, costSheets, file.name);
         if (result.success) {
           successCount++;
         } else {

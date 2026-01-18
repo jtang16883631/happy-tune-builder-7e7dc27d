@@ -759,6 +759,7 @@ export type Database = {
           material: string | null
           material_description: string | null
           ndc: string | null
+          sheet_name: string | null
           size: string | null
           source: string | null
           strength: string | null
@@ -775,6 +776,7 @@ export type Database = {
           material?: string | null
           material_description?: string | null
           ndc?: string | null
+          sheet_name?: string | null
           size?: string | null
           source?: string | null
           strength?: string | null
@@ -791,6 +793,7 @@ export type Database = {
           material?: string | null
           material_description?: string | null
           ndc?: string | null
+          sheet_name?: string | null
           size?: string | null
           source?: string | null
           strength?: string | null
@@ -850,6 +853,7 @@ export type Database = {
       }
       template_sections: {
         Row: {
+          cost_sheet: string | null
           created_at: string | null
           description: string | null
           full_section: string | null
@@ -858,6 +862,7 @@ export type Database = {
           template_id: string
         }
         Insert: {
+          cost_sheet?: string | null
           created_at?: string | null
           description?: string | null
           full_section?: string | null
@@ -866,6 +871,7 @@ export type Database = {
           template_id: string
         }
         Update: {
+          cost_sheet?: string | null
           created_at?: string | null
           description?: string | null
           full_section?: string | null
