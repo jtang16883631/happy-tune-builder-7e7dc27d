@@ -179,7 +179,8 @@ const Scan = () => {
   const [availableCostSheets, setAvailableCostSheets] = useState<string[]>([]);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionDesc, setEditingSectionDesc] = useState('');
-  
+  const [editingSectionCostSheet, setEditingSectionCostSheet] = useState<string | null>(null);
+
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -433,8 +434,8 @@ const Scan = () => {
     }
   };
 
-  // Rename section (update description)
-  const handleRenameSection = async () => {
+  // Edit section (update description AND cost_sheet)
+  const handleEditSection = async () => {
     if (!editingSectionId || !editingSectionDesc.trim()) {
       toast.error('Please enter a description');
       return;
@@ -447,12 +448,12 @@ const Scan = () => {
       const oldFullSection = section.full_section;
       const newFullSection = `${section.sect}-${editingSectionDesc.trim()}`;
       
-      // Note: We need to allow UPDATE on template_sections for managers
       const { error } = await supabase
         .from('template_sections')
         .update({
           description: editingSectionDesc.trim(),
           full_section: newFullSection,
+          cost_sheet: editingSectionCostSheet,
         })
         .eq('id', editingSectionId);
 
@@ -487,15 +488,17 @@ const Scan = () => {
       setRenameSectionDialogOpen(false);
       setEditingSectionId(null);
       setEditingSectionDesc('');
+      setEditingSectionCostSheet(null);
       
       if (selectedTemplate) {
         await loadSections(selectedTemplate.id);
-        // Update selected section if it was renamed
+        // Update selected section if it was edited
         if (selectedSection?.id === editingSectionId) {
           setSelectedSection(prev => prev ? {
             ...prev,
             description: editingSectionDesc.trim(),
-            full_section: newFullSection
+            full_section: newFullSection,
+            cost_sheet: editingSectionCostSheet,
           } : null);
         }
       }
@@ -505,9 +508,11 @@ const Scan = () => {
   };
 
   // Open rename dialog for a section
-  const openRenameDialog = (section: CloudSection) => {
+  // Open edit dialog for a section (description + cost sheet)
+  const openEditSectionDialog = (section: CloudSection) => {
     setEditingSectionId(section.id);
     setEditingSectionDesc(section.description || '');
+    setEditingSectionCostSheet(section.cost_sheet || null);
     setRenameSectionDialogOpen(true);
   };
 
@@ -1605,7 +1610,7 @@ const Scan = () => {
                         className="h-6 w-6 opacity-0 group-hover:opacity-100"
                         onClick={(e) => {
                           e.stopPropagation();
-                          openRenameDialog(section);
+                          openEditSectionDialog(section);
                         }}
                       >
                         <Edit2 className="h-3 w-3" />
@@ -1961,11 +1966,11 @@ const Scan = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Rename Section Dialog */}
+      {/* Edit Section Dialog */}
       <Dialog open={renameSectionDialogOpen} onOpenChange={setRenameSectionDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Section Description</DialogTitle>
+            <DialogTitle>Edit Section</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -1984,12 +1989,42 @@ const Scan = () => {
                 onChange={(e) => setEditingSectionDesc(e.target.value)}
               />
             </div>
+            {availableCostSheets.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Cost Sheet</label>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      {editingSectionCostSheet || 'Select cost sheet...'}
+                      <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-full min-w-[200px]">
+                    <DropdownMenuItem onClick={() => setEditingSectionCostSheet(null)}>
+                      <span className="text-muted-foreground">None</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {availableCostSheets.map((sheet) => (
+                      <DropdownMenuItem
+                        key={sheet}
+                        onClick={() => setEditingSectionCostSheet(sheet)}
+                      >
+                        {sheet}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <p className="text-xs text-muted-foreground">
+                  Choose which cost data tab to use for pricing in this section
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenameSectionDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleRenameSection}>
+            <Button onClick={handleEditSection}>
               <Check className="h-4 w-4 mr-1" />
               Save
             </Button>
