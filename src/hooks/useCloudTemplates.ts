@@ -41,6 +41,7 @@ export interface CloudCostItem {
   strength: string | null;
   size: string | null;
   dose: string | null;
+  sheet_name: string | null; // Which cost sheet tab this item came from
   created_at: string;
 }
 
@@ -185,7 +186,8 @@ export function useCloudTemplates() {
     return { invDate, invNumber, facilityName, sections };
   };
 
-  // Import a template - uses column positions for Cost Data:
+  // Import a template - supports multi-sheet cost data
+  // costSheets is an array of { rows, sheetName } to support multiple cost data tabs (GPO, 340B, etc.)
   // Column A (index 0) = NDC
   // Column B (index 1) = material_description (Med Desc)
   // Column C (index 2) = unit_price (Pack Cost)
@@ -194,7 +196,7 @@ export function useCloudTemplates() {
   const importTemplate = useCallback(
     async (
       templateName: string,
-      costRows: any[],
+      costSheets: { rows: any[]; sheetName: string }[],
       jobTicketRawData: any[][],
       costFileName: string,
       jobTicketFileName: string,
@@ -226,7 +228,6 @@ export function useCloudTemplates() {
         const templateId = templateData.id;
 
         // In bulk mode we optimistically add the template so UI shows all created items
-        // even if a later refetch fails due to auth/token/network issues.
         if (skipRefetch) {
           setTemplates((prev) => {
             if (prev.some((t) => t.id === templateId)) return prev;
@@ -250,43 +251,52 @@ export function useCloudTemplates() {
           if (sectionsError) console.error('Error inserting sections:', sectionsError);
         }
 
-        // Prepare all cost items first, then insert in parallel batches
-        const columnKeys = costRows.length > 0 ? Object.keys(costRows[0]) : [];
+        // Helper to truncate strings to avoid exceeding database limits
+        const truncate = (val: any, maxLen: number = 255): string | null => {
+          if (val == null) return null;
+          const str = String(val).trim();
+          return str.length > maxLen ? str.substring(0, maxLen) : str;
+        };
+
+        // Build all cost items from all sheets
+        const allCostItems: any[] = [];
         
-        // Build all cost items upfront
-        const allCostItems = costRows
-          .filter((row) => {
+        for (const { rows, sheetName } of costSheets) {
+          const columnKeys = rows.length > 0 ? Object.keys(rows[0]) : [];
+          
+          for (const row of rows) {
             const ndcValue = columnKeys[0] ? row[columnKeys[0]] : null;
-            return ndcValue && String(ndcValue).trim().length > 0;
-          })
-          .map((row) => {
+            if (!ndcValue || String(ndcValue).trim().length === 0) continue;
+
             const colA = columnKeys[0] ? row[columnKeys[0]] : null;
             const colB = columnKeys[1] ? row[columnKeys[1]] : null;
             const colC = columnKeys[2] ? row[columnKeys[2]] : null;
             const colD = columnKeys[3] ? row[columnKeys[3]] : null;
             const colE = columnKeys[4] ? row[columnKeys[4]] : null;
 
-            return {
+            allCostItems.push({
               template_id: templateId,
-              ndc: String(colA || '').trim(),
-              material_description: colB ? String(colB).trim() : null,
+              ndc: truncate(colA, 50),
+              material_description: truncate(colB, 255),
               unit_price: colC ? parseFloat(String(colC)) : null,
-              source: colD ? String(colD).trim() : null,
-              material: colE ? String(colE).trim() : null,
+              source: truncate(colD, 50),
+              material: truncate(colE, 50),
               billing_date: null,
               manufacturer: null,
               generic: null,
               strength: null,
               size: null,
               dose: null,
-            };
-          });
+              sheet_name: truncate(sheetName, 50),
+            });
+          }
+        }
 
         const totalItems = allCostItems.length;
         onProgress?.({ stage: 'cost', inserted: 0, total: totalItems });
 
-        // Use larger batch size (1000) and parallel insertion (4 concurrent batches)
-        const batchSize = 1000;
+        // Use smaller batch size (500) for safety and parallel insertion (4 concurrent batches)
+        const batchSize = 500;
         const concurrency = 4;
         const batches: any[][] = [];
         
@@ -325,11 +335,11 @@ export function useCloudTemplates() {
     },
     [user, fetchTemplates]
   );
-  // Update cost data for a template - replaces all cost items
+  // Update cost data for a template - replaces all cost items (supports multi-sheet)
   const updateCostData = useCallback(
     async (
       templateId: string,
-      costRows: any[],
+      costSheets: { rows: any[]; sheetName: string }[],
       costFileName: string
     ): Promise<{ success: boolean; error?: string }> => {
       if (!user) return { success: false, error: 'Not authenticated' };
@@ -343,42 +353,51 @@ export function useCloudTemplates() {
 
         if (deleteError) throw deleteError;
 
-        // Get column keys from first row (headers) to map by position
-        const columnKeys = costRows.length > 0 ? Object.keys(costRows[0]) : [];
+        // Helper to truncate strings
+        const truncate = (val: any, maxLen: number = 255): string | null => {
+          if (val == null) return null;
+          const str = String(val).trim();
+          return str.length > maxLen ? str.substring(0, maxLen) : str;
+        };
 
-        // Insert new cost items
-        const costInserts = costRows
-          .filter((row) => {
+        // Build all cost items from all sheets
+        const allCostItems: any[] = [];
+        
+        for (const { rows, sheetName } of costSheets) {
+          const columnKeys = rows.length > 0 ? Object.keys(rows[0]) : [];
+          
+          for (const row of rows) {
             const ndcValue = columnKeys[0] ? row[columnKeys[0]] : null;
-            return ndcValue && String(ndcValue).trim().length > 0;
-          })
-          .map((row) => {
-            const colA = columnKeys[0] ? row[columnKeys[0]] : null; // NDC
-            const colB = columnKeys[1] ? row[columnKeys[1]] : null; // material_description
-            const colC = columnKeys[2] ? row[columnKeys[2]] : null; // unit_price
-            const colD = columnKeys[3] ? row[columnKeys[3]] : null; // source
-            const colE = columnKeys[4] ? row[columnKeys[4]] : null; // material
+            if (!ndcValue || String(ndcValue).trim().length === 0) continue;
 
-            return {
+            const colA = columnKeys[0] ? row[columnKeys[0]] : null;
+            const colB = columnKeys[1] ? row[columnKeys[1]] : null;
+            const colC = columnKeys[2] ? row[columnKeys[2]] : null;
+            const colD = columnKeys[3] ? row[columnKeys[3]] : null;
+            const colE = columnKeys[4] ? row[columnKeys[4]] : null;
+
+            allCostItems.push({
               template_id: templateId,
-              ndc: String(colA || '').trim(),
-              material_description: colB ? String(colB).trim() : null,
+              ndc: truncate(colA, 50),
+              material_description: truncate(colB, 255),
               unit_price: colC ? parseFloat(String(colC)) : null,
-              source: colD ? String(colD).trim() : null,
-              material: colE ? String(colE).trim() : null,
+              source: truncate(colD, 50),
+              material: truncate(colE, 50),
               billing_date: null,
               manufacturer: null,
               generic: null,
               strength: null,
               size: null,
               dose: null,
-            };
-          });
+              sheet_name: truncate(sheetName, 50),
+            });
+          }
+        }
 
         // Insert in batches of 500
         const batchSize = 500;
-        for (let i = 0; i < costInserts.length; i += batchSize) {
-          const batch = costInserts.slice(i, i + batchSize);
+        for (let i = 0; i < allCostItems.length; i += batchSize) {
+          const batch = allCostItems.slice(i, i + batchSize);
           const { error: costError } = await supabase.from('template_cost_items').insert(batch);
           if (costError) throw costError;
         }
