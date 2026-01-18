@@ -373,6 +373,14 @@ const Index = () => {
 
     try {
       const costSheets = await parseExcelFileAllSheets(file);
+      const detectedSheets = Array.from(
+        new Set(costSheets.map((s) => s.sheetName).filter((n): n is string => Boolean(n)))
+      );
+      toast({
+        title: 'Detected cost tabs',
+        description: detectedSheets.length ? detectedSheets.join(', ') : 'No tabs detected in this file',
+      });
+
       let successCount = 0;
       let failCount = 0;
 

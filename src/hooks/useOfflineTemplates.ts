@@ -32,6 +32,7 @@ export interface OfflineSection {
   sect: string;
   description: string | null;
   full_section: string | null;
+  cost_sheet?: string | null; // e.g., "GPO", "340B" (matches cloud template_sections.cost_sheet)
 }
 
 export interface OfflineCostItem {
@@ -42,6 +43,7 @@ export interface OfflineCostItem {
   unit_price: number | null;
   source: string | null;
   material: string | null;
+  sheet_name?: string | null; // e.g., "GPO", "340B" (matches cloud template_cost_items.sheet_name)
 }
 
 interface SyncMeta {
@@ -149,49 +151,52 @@ export function useOfflineTemplates() {
           if (savedMeta) setSyncMeta(savedMeta);
         } else {
           const database = new SQL.Database();
-          database.run(`
-            CREATE TABLE IF NOT EXISTS templates (
-              id TEXT PRIMARY KEY,
-              cloud_id TEXT,
-              user_id TEXT NOT NULL,
-              name TEXT NOT NULL,
-              inv_date TEXT,
-              facility_name TEXT,
-              inv_number TEXT,
-              cost_file_name TEXT,
-              job_ticket_file_name TEXT,
-              status TEXT DEFAULT 'active',
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              is_dirty INTEGER DEFAULT 0
-            );
-            
-            CREATE TABLE IF NOT EXISTS sections (
-              id TEXT PRIMARY KEY,
-              template_id TEXT NOT NULL,
-              sect TEXT NOT NULL,
-              description TEXT,
-              full_section TEXT,
-              FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
-            );
-            
-            CREATE TABLE IF NOT EXISTS cost_items (
-              id TEXT PRIMARY KEY,
-              template_id TEXT NOT NULL,
-              ndc TEXT,
-              material_description TEXT,
-              unit_price REAL,
-              source TEXT,
-              material TEXT,
-              FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
-            );
-            
-            CREATE INDEX IF NOT EXISTS idx_templates_date ON templates(inv_date DESC);
-            CREATE INDEX IF NOT EXISTS idx_templates_cloud ON templates(cloud_id);
-            CREATE INDEX IF NOT EXISTS idx_sections_template ON sections(template_id);
-            CREATE INDEX IF NOT EXISTS idx_cost_template ON cost_items(template_id);
-            CREATE INDEX IF NOT EXISTS idx_cost_ndc ON cost_items(ndc);
-          `);
+            database.run(`
+              CREATE TABLE IF NOT EXISTS templates (
+                id TEXT PRIMARY KEY,
+                cloud_id TEXT,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                inv_date TEXT,
+                facility_name TEXT,
+                inv_number TEXT,
+                cost_file_name TEXT,
+                job_ticket_file_name TEXT,
+                status TEXT DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                is_dirty INTEGER DEFAULT 0
+              );
+              
+              CREATE TABLE IF NOT EXISTS sections (
+                id TEXT PRIMARY KEY,
+                template_id TEXT NOT NULL,
+                sect TEXT NOT NULL,
+                description TEXT,
+                full_section TEXT,
+                cost_sheet TEXT,
+                FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+              );
+              
+              CREATE TABLE IF NOT EXISTS cost_items (
+                id TEXT PRIMARY KEY,
+                template_id TEXT NOT NULL,
+                ndc TEXT,
+                material_description TEXT,
+                unit_price REAL,
+                source TEXT,
+                material TEXT,
+                sheet_name TEXT,
+                FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+              );
+              
+              CREATE INDEX IF NOT EXISTS idx_templates_date ON templates(inv_date DESC);
+              CREATE INDEX IF NOT EXISTS idx_templates_cloud ON templates(cloud_id);
+              CREATE INDEX IF NOT EXISTS idx_sections_template ON sections(template_id);
+              CREATE INDEX IF NOT EXISTS idx_cost_template ON cost_items(template_id);
+              CREATE INDEX IF NOT EXISTS idx_cost_ndc ON cost_items(ndc);
+              CREATE INDEX IF NOT EXISTS idx_cost_sheet ON cost_items(sheet_name);
+            `);
           
           setDb(database);
           await saveDatabase(database);
@@ -292,7 +297,7 @@ export function useOfflineTemplates() {
 
     try {
       const results = db.exec(`
-        SELECT id, template_id, sect, description, full_section
+        SELECT id, template_id, sect, description, full_section, cost_sheet
         FROM sections
         WHERE template_id = ?
         ORDER BY sect
@@ -306,6 +311,7 @@ export function useOfflineTemplates() {
         sect: row[2] as string,
         description: row[3] as string | null,
         full_section: row[4] as string | null,
+        cost_sheet: (row[5] as string | null) ?? null,
       }));
     } catch (err) {
       console.error('Get sections error:', err);
@@ -449,9 +455,9 @@ export function useOfflineTemplates() {
 
         for (const s of sections || []) {
           db.run(`
-            INSERT INTO sections (id, template_id, sect, description, full_section)
-            VALUES (?, ?, ?, ?, ?)
-          `, [generateId(), localId, s.sect, s.description, s.full_section]);
+            INSERT INTO sections (id, template_id, sect, description, full_section, cost_sheet)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `, [generateId(), localId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
         }
 
         // Update progress - fetching cost items
@@ -477,9 +483,9 @@ export function useOfflineTemplates() {
 
           for (const c of costItems || []) {
             db.run(`
-              INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [generateId(), localId, c.ndc, c.material_description, c.unit_price, c.source, c.material]);
+              INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [generateId(), localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
           }
 
           totalCostItemsFetched += (costItems?.length || 0);
@@ -683,19 +689,26 @@ export function useOfflineTemplates() {
           db.run(`UPDATE templates SET cloud_id = ? WHERE id = ?`, [newTemplate.id, template.id]);
 
           // Push sections
-          const sectionsResult = db.exec(`SELECT sect, description, full_section FROM sections WHERE template_id = ?`, [template.id]);
+          const sectionsResult = db.exec(
+            `SELECT sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`,
+            [template.id]
+          );
           if (sectionsResult.length > 0) {
             const sectionInserts = sectionsResult[0].values.map((s: any[]) => ({
               template_id: newTemplate.id,
               sect: s[0],
               description: s[1],
               full_section: s[2],
+              cost_sheet: s[3] ?? null,
             }));
             await supabase.from('template_sections').insert(sectionInserts);
           }
 
           // Push cost items in batches
-          const costResult = db.exec(`SELECT ndc, material_description, unit_price, source, material FROM cost_items WHERE template_id = ?`, [template.id]);
+          const costResult = db.exec(
+            `SELECT ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`,
+            [template.id]
+          );
           if (costResult.length > 0) {
             const costInserts = costResult[0].values.map((c: any[]) => ({
               template_id: newTemplate.id,
@@ -704,6 +717,7 @@ export function useOfflineTemplates() {
               unit_price: c[2],
               source: c[3],
               material: c[4],
+              sheet_name: c[5] ?? null,
             }));
             
             // Batch insert

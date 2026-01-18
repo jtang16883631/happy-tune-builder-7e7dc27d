@@ -294,7 +294,7 @@ export function useCloudTemplates() {
               strength: null,
               size: null,
               dose: null,
-              sheet_name: truncate(sheetName, 50),
+              sheet_name: truncate(sheetName ?? 'Sheet1', 50),
             });
           }
         }
@@ -396,7 +396,7 @@ export function useCloudTemplates() {
               strength: null,
               size: null,
               dose: null,
-              sheet_name: truncate(sheetName, 50),
+              sheet_name: truncate(sheetName ?? 'Sheet1', 50),
             });
           }
         }
