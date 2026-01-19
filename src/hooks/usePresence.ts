@@ -13,6 +13,7 @@ export interface PresenceUser {
 export function usePresence() {
   const { user } = useAuth();
   const [presentUsers, setPresentUsers] = useState<PresenceUser[]>([]);
+  const [currentUserPresence, setCurrentUserPresence] = useState<PresenceUser | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -28,19 +29,22 @@ export function usePresence() {
         
         Object.values(state).forEach((presences: any[]) => {
           presences.forEach((presence) => {
-            if (presence.id !== user.id) {
-              users.push({
-                id: presence.id,
-                email: presence.email,
-                fullName: presence.fullName,
-                avatarUrl: presence.avatarUrl,
-                onlineAt: presence.onlineAt,
-              });
-            }
+            users.push({
+              id: presence.id,
+              email: presence.email,
+              fullName: presence.fullName,
+              avatarUrl: presence.avatarUrl,
+              onlineAt: presence.onlineAt,
+            });
           });
         });
 
-        setPresentUsers(users);
+        // Separate current user from others
+        const me = users.find(u => u.id === user.id);
+        const others = users.filter(u => u.id !== user.id);
+        
+        setCurrentUserPresence(me || null);
+        setPresentUsers(others);
       })
       .subscribe(async (status) => {
         if (status !== 'SUBSCRIBED') return;
@@ -52,12 +56,22 @@ export function usePresence() {
           .eq('id', user.id)
           .single();
 
-        await channel.track({
+        const myPresence: PresenceUser = {
           id: user.id,
           email: user.email || '',
           fullName: profile?.full_name || user.email?.split('@')[0] || 'User',
-          avatarUrl: profile?.avatar_url,
+          avatarUrl: profile?.avatar_url || undefined,
           onlineAt: new Date().toISOString(),
+        };
+
+        setCurrentUserPresence(myPresence);
+
+        await channel.track({
+          id: user.id,
+          email: user.email || '',
+          fullName: myPresence.fullName,
+          avatarUrl: myPresence.avatarUrl,
+          onlineAt: myPresence.onlineAt,
         });
       });
 
@@ -66,5 +80,5 @@ export function usePresence() {
     };
   }, [user]);
 
-  return { presentUsers, currentUser: user };
+  return { presentUsers, currentUserPresence, totalOnline: presentUsers.length + (currentUserPresence ? 1 : 0) };
 }
