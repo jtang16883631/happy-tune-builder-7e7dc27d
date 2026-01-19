@@ -12,6 +12,7 @@ import { useOfflineTemplates, OfflineTemplate } from '@/hooks/useOfflineTemplate
 import { useLocalFDA } from '@/hooks/useLocalFDA';
 import { SyncButton } from '@/components/scanner/SyncButton';
 import { OfflineSyncDialog } from '@/components/scanner/OfflineSyncDialog';
+import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
@@ -154,10 +155,15 @@ const Scan = () => {
     updateTemplateStatus: offlineUpdateTemplateStatus,
   } = useOfflineTemplates();
   
-  const { lookupNDC: fdaLookup } = useLocalFDA();
+  const { lookupNDC: fdaLookup, findOuterNDCsByNDC9, getDrugByOuterNDC } = useLocalFDA();
 
   // State for offline sync dialog
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+
+  // State for outer NDC selection dialog
+  const [outerNDCDialogOpen, setOuterNDCDialogOpen] = useState(false);
+  const [outerNDCOptions, setOuterNDCOptions] = useState<OuterNDCOption[]>([]);
+  const [pendingNDCLookup, setPendingNDCLookup] = useState<{ scannedNDC: string; rowIndex: number } | null>(null);
 
   // Use cloud templates when online, offline templates when offline
   const templates = isOnline ? cloudTemplates : offlineTemplates as unknown as CloudTemplate[];
@@ -562,10 +568,15 @@ const Scan = () => {
   // Extended = Unit Cost * QTY
   // DEVICE = blank
   // REC = auto-generated from user name
-  const lookupNDC = useCallback(async (ndc: string, rowIndex: number) => {
-    if (!ndc || ndc.length < 10 || !selectedTemplate) return;
+  // 
+  // finalNdc: The resolved outer NDC to use for lookup (after selection if multiple)
+  // scannedNdc: The original scanned NDC (inner NDC)
+  const lookupNDC = useCallback(async (finalNdc: string, scannedNdc: string, rowIndex: number) => {
+    if (!finalNdc || finalNdc.length < 10 || !selectedTemplate) return;
 
-    const cleanNdc = ndc.replace(/-/g, '');
+    const cleanNdc = finalNdc.replace(/-/g, '');
+    const originalScanned = scannedNdc.replace(/-/g, '');
+    
     const fdaResult = fdaLookup(cleanNdc);
     const costItem = await getCostItemByNDC(selectedTemplate.id, cleanNdc, selectedSection?.cost_sheet ?? null);
 
@@ -649,6 +660,7 @@ const Scan = () => {
       updated[rowIndex] = {
         ...updated[rowIndex],
         ndc: cleanNdc,
+        scannedNdc: originalScanned, // Store the original scanned NDC
         rec,
         device: '', // Device stays blank
         time: new Date().toLocaleTimeString(), // Real time from laptop
@@ -687,6 +699,88 @@ const Scan = () => {
     // Don't auto-focus next row's NDC here - we want to focus QTY first
   }, [fdaLookup, getCostItemByNDC, selectedTemplate, scanRows, generateNextRec, selectedSection, createEmptyRow]);
 
+  // Initiate NDC lookup with outer NDC selection logic
+  // 1. Extract NDC9 from scanned NDC
+  // 2. Look up by innerpack_outer_left9 (column AG)
+  // 3. Get unique outerpack_ndc values (column AE)
+  // 4. If 0: show error, if 1: auto-use, if >1: show selection dialog
+  const initiateNDCLookup = useCallback(async (scannedNdc: string, rowIndex: number): Promise<boolean> => {
+    if (!scannedNdc || scannedNdc.length < 10) return false;
+
+    const cleanNdc = scannedNdc.replace(/-/g, '');
+    
+    // Find outer NDCs using NDC9 key
+    const { outerNDCs, drugs } = findOuterNDCsByNDC9(cleanNdc);
+
+    if (outerNDCs.length === 0) {
+      // No outer NDCs found - try direct lookup as fallback
+      const directResult = fdaLookup(cleanNdc);
+      if (directResult) {
+        // Use the scanned NDC directly
+        await lookupNDC(cleanNdc, cleanNdc, rowIndex);
+        return true;
+      }
+      
+      toast.error('NDC not found in FDA data', {
+        description: `Scanned NDC: ${cleanNdc}`,
+        duration: 5000,
+      });
+      return false;
+    }
+
+    if (outerNDCs.length === 1) {
+      // Exactly one outer NDC - use it automatically
+      await lookupNDC(outerNDCs[0], cleanNdc, rowIndex);
+      return true;
+    }
+
+    // Multiple outer NDCs - show selection dialog
+    const options: OuterNDCOption[] = outerNDCs.map(outerNDC => {
+      // Find the drug record that has this outer NDC
+      const drug = drugs.find(d => d.outerpack_ndc === outerNDC) || getDrugByOuterNDC(outerNDC);
+      return {
+        outerNDC,
+        trade: drug?.trade || null,
+        generic: drug?.generic || null,
+        strength: drug?.strength || null,
+        packageSize: drug?.package_size || null,
+        manufacturer: drug?.manufacturer || null,
+        doseForm: drug?.dose_form || null,
+      };
+    });
+
+    setOuterNDCOptions(options);
+    setPendingNDCLookup({ scannedNDC: cleanNdc, rowIndex });
+    setOuterNDCDialogOpen(true);
+    
+    return false; // Indicate that we're waiting for user selection
+  }, [findOuterNDCsByNDC9, fdaLookup, getDrugByOuterNDC, lookupNDC]);
+
+  // Handle outer NDC selection from dialog
+  const handleOuterNDCSelect = useCallback(async (selectedOuterNDC: string) => {
+    if (!pendingNDCLookup) return;
+    
+    const { scannedNDC, rowIndex } = pendingNDCLookup;
+    
+    setOuterNDCDialogOpen(false);
+    setOuterNDCOptions([]);
+    setPendingNDCLookup(null);
+    
+    await lookupNDC(selectedOuterNDC, scannedNDC, rowIndex);
+    
+    // Focus on QTY field after selection
+    requestAnimationFrame(() => {
+      qtyInputRefs.current[rowIndex]?.focus();
+    });
+  }, [pendingNDCLookup, lookupNDC]);
+
+  // Handle outer NDC selection cancel
+  const handleOuterNDCCancel = useCallback(() => {
+    setOuterNDCDialogOpen(false);
+    setOuterNDCOptions([]);
+    setPendingNDCLookup(null);
+  }, []);
+
   // Handle field change - recalculate Extended when QTY or Unit Cost changes
   const handleFieldChange = (field: keyof ScanRow, value: string | number | null, rowIndex: number) => {
     setScanRows(prev => {
@@ -721,7 +815,7 @@ const Scan = () => {
     });
   };
 
-  // Handle NDC input Enter/Tab key - jump to QTY after lookup
+  // Handle NDC input Enter/Tab key - initiate outer NDC lookup flow
   const handleNdcKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>, rowIndex: number) => {
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault();
@@ -741,15 +835,17 @@ const Scan = () => {
 
       const ndc = scanRows[rowIndex].scannedNdc || scanRows[rowIndex].ndc;
       if (ndc && ndc.length >= 10) {
-        // IMPORTANT: wait for lookup to finish before focusing QTY.
-        // Otherwise, fast users/scanners can reach QTY before MIS fields are filled,
-        // causing Enter on QTY to "fail" and require a second Enter.
-        await lookupNDC(ndc, rowIndex);
+        // Initiate the outer NDC lookup flow
+        // This may show a selection dialog if multiple outer NDCs are found
+        const completed = await initiateNDCLookup(ndc, rowIndex);
 
-        // After lookup, focus on QTY field
-        requestAnimationFrame(() => {
-          qtyInputRefs.current[rowIndex]?.focus();
-        });
+        // Only focus QTY if lookup completed immediately (single or no outer NDC)
+        // If dialog was shown, focus will be handled in handleOuterNDCSelect
+        if (completed) {
+          requestAnimationFrame(() => {
+            qtyInputRefs.current[rowIndex]?.focus();
+          });
+        }
       }
     }
   };
@@ -2046,6 +2142,16 @@ const Scan = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Outer NDC Selection Dialog */}
+      <OuterNDCSelectionDialog
+        open={outerNDCDialogOpen}
+        onOpenChange={setOuterNDCDialogOpen}
+        scannedNDC={pendingNDCLookup?.scannedNDC || ''}
+        options={outerNDCOptions}
+        onSelect={handleOuterNDCSelect}
+        onCancel={handleOuterNDCCancel}
+      />
     </AppLayout>
   );
 };

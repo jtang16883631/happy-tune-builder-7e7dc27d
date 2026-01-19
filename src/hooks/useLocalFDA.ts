@@ -190,6 +190,8 @@ export function useLocalFDA() {
       CREATE INDEX idx_cardinal_cin ON drugs(cardinal_cin);
       CREATE INDEX idx_mckesson_item ON drugs(mckesson_item);
       CREATE INDEX idx_gcn ON drugs(gcn);
+      CREATE INDEX idx_innerpack_outer_left9 ON drugs(innerpack_outer_left9);
+      CREATE INDEX idx_outerpack_ndc ON drugs(outerpack_ndc);
     `);
 
     let success = 0;
@@ -354,6 +356,81 @@ export function useLocalFDA() {
     }
   }, [db]);
 
+  // Find outer NDCs by NDC9 key
+  // This searches column AG (innerpack_outer_left9) and returns unique column AE (outerpack_ndc) values
+  const findOuterNDCsByNDC9 = useCallback((ndc: string): { outerNDCs: string[]; drugs: FDADrug[] } => {
+    if (!db) return { outerNDCs: [], drugs: [] };
+
+    try {
+      // Extract NDC9 (first 9 digits) from the scanned NDC
+      const cleanNdc = ndc.replace(/-/g, '');
+      const ndc9 = cleanNdc.slice(0, 9);
+
+      // Query by innerpack_outer_left9 (column AG)
+      const results = db.exec(`
+        SELECT * FROM drugs 
+        WHERE innerpack_outer_left9 = ?
+      `, [ndc9]);
+
+      if (results.length === 0 || results[0].values.length === 0) {
+        return { outerNDCs: [], drugs: [] };
+      }
+
+      const columns = results[0].columns;
+      const drugs: FDADrug[] = results[0].values.map((row: any[]) => {
+        const drug: any = {};
+        columns.forEach((col, idx) => {
+          drug[col] = row[idx];
+        });
+        return drug as FDADrug;
+      });
+
+      // Extract unique outerpack_ndc values (column AE)
+      const outerNDCSet = new Set<string>();
+      drugs.forEach(drug => {
+        if (drug.outerpack_ndc) {
+          outerNDCSet.add(drug.outerpack_ndc);
+        }
+      });
+
+      return {
+        outerNDCs: Array.from(outerNDCSet),
+        drugs,
+      };
+    } catch (err) {
+      console.error('findOuterNDCsByNDC9 error:', err);
+      return { outerNDCs: [], drugs: [] };
+    }
+  }, [db]);
+
+  // Get drug info for a specific outer NDC
+  const getDrugByOuterNDC = useCallback((outerNDC: string): FDADrug | null => {
+    if (!db) return null;
+
+    try {
+      const results = db.exec(`
+        SELECT * FROM drugs 
+        WHERE outerpack_ndc = ?
+        LIMIT 1
+      `, [outerNDC]);
+
+      if (results.length === 0 || results[0].values.length === 0) return null;
+
+      const columns = results[0].columns;
+      const row = results[0].values[0];
+      
+      const drug: any = {};
+      columns.forEach((col, idx) => {
+        drug[col] = row[idx];
+      });
+
+      return drug as FDADrug;
+    } catch (err) {
+      console.error('getDrugByOuterNDC error:', err);
+      return null;
+    }
+  }, [db]);
+
   // Get total count
   const getCount = useCallback((): number => {
     if (!db) return 0;
@@ -389,6 +466,8 @@ export function useLocalFDA() {
     importData,
     searchDrugs,
     lookupNDC,
+    findOuterNDCsByNDC9,
+    getDrugByOuterNDC,
     getCount,
     clearDatabase,
   };
