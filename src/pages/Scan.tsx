@@ -1094,15 +1094,15 @@ const Scan = () => {
         ['Sections', 'Value'],
       ];
       
-      // Add each section row
+      // Add each section row with $ formatting
       sectionTotals.forEach(st => {
-        summaryRows.push([st.section, st.value]);
+        summaryRows.push([st.section, `$${st.value.toFixed(2)}`]);
       });
       
       // Empty row before total
       summaryRows.push([]);
-      // Grand total row
-      summaryRows.push(['', grandTotal]);
+      // Grand total row with $ formatting
+      summaryRows.push(['', `$${grandTotal.toFixed(2)}`]);
       
       const summaryWorksheet = XLSX.utils.aoa_to_sheet(summaryRows);
       
