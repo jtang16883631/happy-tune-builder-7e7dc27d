@@ -730,20 +730,10 @@ const Scan = () => {
     console.log('[NDC Lookup] Found drugs count:', drugs.length);
 
     if (outerNDCs.length === 0) {
-      console.log('[NDC Lookup] No outer NDCs found, trying direct lookup');
-      // No outer NDCs found - try direct lookup as fallback
-      const directResult = fdaLookup(cleanNdc);
-      console.log('[NDC Lookup] Direct lookup result:', directResult ? 'found' : 'not found');
-
-      if (directResult) {
-        // Use the scanned NDC directly
-        await lookupNDC(cleanNdc, cleanNdc, rowIndex);
-        return true;
-      }
-
-      toast.error('NDC not found in FDA data', {
-        description: `Scanned NDC: ${cleanNdc}`,
-        duration: 5000,
+      // Per business rules: if no outer pack NDCs exist for this NDC9, stop and show an error.
+      toast.error('NDC not found in FDA mapping', {
+        description: `No outer pack NDC (AE) found for NDC9: ${cleanNdc.slice(0, 9)}`,
+        duration: 6000,
       });
       return false;
     }
@@ -752,14 +742,21 @@ const Scan = () => {
       console.log('[NDC Lookup] Single outer NDC, auto-using:', outerNDCs[0]);
       // Exactly one outer NDC - use it automatically
       await lookupNDC(outerNDCs[0], cleanNdc, rowIndex);
+      toast(`Outer NDC auto-selected: ${outerNDCs[0]}`);
       return true;
     }
 
     console.log('[NDC Lookup] Multiple outer NDCs found, showing dialog');
+    toast('Multiple outer NDCs found — please choose one');
     // Multiple outer NDCs - show selection dialog
     const options: OuterNDCOption[] = outerNDCs.map(outerNDC => {
-      // Find the drug record that has this outer NDC
-      const drug = drugs.find(d => d.outerpack_ndc === outerNDC) || getDrugByOuterNDC(outerNDC);
+      // Find the drug record that has this outer NDC (normalize digits + pad)
+      const match = (d: any) => {
+        const digits = String(d?.outerpack_ndc ?? '').replace(/\D/g, '');
+        const normalized = digits.length >= 11 ? digits.slice(0, 11) : digits.padStart(11, '0');
+        return normalized === outerNDC;
+      };
+      const drug = drugs.find(match) || getDrugByOuterNDC(outerNDC);
       return {
         outerNDC,
         trade: drug?.trade || null,

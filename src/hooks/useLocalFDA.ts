@@ -362,15 +362,19 @@ export function useLocalFDA() {
     if (!db) return { outerNDCs: [], drugs: [] };
 
     try {
-      // Extract NDC9 (first 9 digits) from the scanned NDC
-      const cleanNdc = ndc.replace(/-/g, '');
-      const ndc9 = cleanNdc.slice(0, 9);
+      const digits = (ndc ?? '').replace(/\D/g, '');
+      const ndc9 = digits.slice(0, 9);
+      const ndc9Trim = ndc9.replace(/^0+/, '');
 
-      // Query by innerpack_outer_left9 (column AG)
-      const results = db.exec(`
-        SELECT * FROM drugs 
-        WHERE innerpack_outer_left9 = ?
-      `, [ndc9]);
+      // Normalize stored values by stripping dashes/spaces; also try a trimmed-leading-zero variant
+      const results = db.exec(
+        `
+        SELECT * FROM drugs
+        WHERE REPLACE(REPLACE(innerpack_outer_left9, '-', ''), ' ', '') = ?
+           OR REPLACE(REPLACE(innerpack_outer_left9, '-', ''), ' ', '') = ?
+        `,
+        [ndc9, ndc9Trim]
+      );
 
       if (results.length === 0 || results[0].values.length === 0) {
         return { outerNDCs: [], drugs: [] };
@@ -387,10 +391,16 @@ export function useLocalFDA() {
 
       // Extract unique outerpack_ndc values (column AE)
       const outerNDCSet = new Set<string>();
-      drugs.forEach(drug => {
-        if (drug.outerpack_ndc) {
-          outerNDCSet.add(drug.outerpack_ndc);
-        }
+      drugs.forEach((drug) => {
+        const raw = drug.outerpack_ndc;
+        if (!raw) return;
+
+        const outerDigits = String(raw).replace(/\D/g, '');
+        if (!outerDigits) return;
+
+        // Many Excel imports drop leading zeros; pad to 11 when possible.
+        const normalized = outerDigits.length >= 11 ? outerDigits.slice(0, 11) : outerDigits.padStart(11, '0');
+        outerNDCSet.add(normalized);
       });
 
       return {
@@ -408,17 +418,25 @@ export function useLocalFDA() {
     if (!db) return null;
 
     try {
-      const results = db.exec(`
-        SELECT * FROM drugs 
-        WHERE outerpack_ndc = ?
+      const outerDigits = String(outerNDC ?? '').replace(/\D/g, '');
+      const normalized = outerDigits.length >= 11 ? outerDigits.slice(0, 11) : outerDigits.padStart(11, '0');
+      const normalizedTrim = normalized.replace(/^0+/, '');
+
+      const results = db.exec(
+        `
+        SELECT * FROM drugs
+        WHERE REPLACE(REPLACE(outerpack_ndc, '-', ''), ' ', '') = ?
+           OR REPLACE(REPLACE(outerpack_ndc, '-', ''), ' ', '') = ?
         LIMIT 1
-      `, [outerNDC]);
+        `,
+        [normalized, normalizedTrim]
+      );
 
       if (results.length === 0 || results[0].values.length === 0) return null;
 
       const columns = results[0].columns;
       const row = results[0].values[0];
-      
+
       const drug: any = {};
       columns.forEach((col, idx) => {
         drug[col] = row[idx];
