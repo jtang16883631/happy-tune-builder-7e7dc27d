@@ -41,7 +41,7 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-function UserAvatar({ user, showBorder = true }: { user: PresenceUser; showBorder?: boolean }) {
+function UserAvatar({ user, showBorder = true, isCurrentUser = false }: { user: PresenceUser; showBorder?: boolean; isCurrentUser?: boolean }) {
   const color = getColorForUser(user.id);
   
   return (
@@ -60,7 +60,7 @@ function UserAvatar({ user, showBorder = true }: { user: PresenceUser; showBorde
           </Avatar>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-sm">
-          <p className="font-medium">{user.fullName}</p>
+          <p className="font-medium">{user.fullName} {isCurrentUser && '(you)'}</p>
           <p className="text-xs text-muted-foreground">{user.email}</p>
         </TooltipContent>
       </Tooltip>
@@ -69,21 +69,28 @@ function UserAvatar({ user, showBorder = true }: { user: PresenceUser; showBorde
 }
 
 export function ActiveUsersIndicator() {
-  const { presentUsers } = usePresence();
+  const { presentUsers, currentUserPresence, totalOnline } = usePresence();
   const MAX_VISIBLE = 3;
 
-  if (presentUsers.length === 0) {
+  // Show nothing if we haven't connected yet
+  if (!currentUserPresence) {
     return null;
   }
 
-  const visibleUsers = presentUsers.slice(0, MAX_VISIBLE);
-  const overflowCount = presentUsers.length - MAX_VISIBLE;
+  // All users including current user for display
+  const allUsers = [currentUserPresence, ...presentUsers];
+  const visibleUsers = allUsers.slice(0, MAX_VISIBLE);
+  const overflowCount = allUsers.length - MAX_VISIBLE;
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       <div className="flex items-center -space-x-2">
-        {visibleUsers.map((user) => (
-          <UserAvatar key={user.id} user={user} />
+        {visibleUsers.map((user, idx) => (
+          <UserAvatar 
+            key={user.id} 
+            user={user} 
+            isCurrentUser={idx === 0}
+          />
         ))}
         
         {overflowCount > 0 && (
@@ -99,10 +106,10 @@ export function ActiveUsersIndicator() {
               <div className="flex flex-col gap-2">
                 <p className="text-sm font-medium flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  {presentUsers.length} users online
+                  {totalOnline} online
                 </p>
                 <div className="flex flex-col gap-1">
-                  {presentUsers.slice(MAX_VISIBLE).map((user) => (
+                  {allUsers.slice(MAX_VISIBLE).map((user) => (
                     <div key={user.id} className="flex items-center gap-2 text-sm">
                       <UserAvatar user={user} showBorder={false} />
                       <span className="truncate">{user.fullName}</span>
@@ -115,11 +122,13 @@ export function ActiveUsersIndicator() {
         )}
       </div>
       
-      <div className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
+      {/* Live indicator dot */}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
           <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
         </span>
+        <span className="font-medium">{totalOnline}</span>
       </div>
     </div>
   );
