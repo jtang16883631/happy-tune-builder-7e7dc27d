@@ -251,6 +251,8 @@ export function useLocalFDA() {
       String(k)
         .replace(/\u00A0/g, ' ')
         .toLowerCase()
+        // Make header matching resilient to punctuation differences like "-", "/", "#", etc.
+        .replace(/[^a-z0-9]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
@@ -437,18 +439,48 @@ export function useLocalFDA() {
 
     try {
       const digits = (ndc ?? '').replace(/\D/g, '');
-      const ndc9 = digits.slice(0, 9);
-      const ndc9Trim = ndc9.replace(/^0+/, '');
+      const ndc11 = digits.length >= 11 ? digits.slice(0, 11) : digits.padStart(11, '0');
+      const ndc11Trim = ndc11.replace(/^0+/, '') || ndc11;
 
-      // Normalize stored values by stripping dashes/spaces; also try a trimmed-leading-zero variant
-      const results = db.exec(
+      const ndc9 = ndc11.slice(0, 9);
+      const ndc9Trim = ndc9.replace(/^0+/, '') || ndc9;
+
+      // 1) Prefer an exact match on the scanned NDC (works even if AG/"Left 9" is missing)
+      let results = db.exec(
         `
         SELECT * FROM drugs
-        WHERE REPLACE(REPLACE(innerpack_outer_left9, '-', ''), ' ', '') = ?
-           OR REPLACE(REPLACE(innerpack_outer_left9, '-', ''), ' ', '') = ?
+        WHERE REPLACE(REPLACE(ndc, '-', ''), ' ', '') = ?
+           OR REPLACE(REPLACE(ndc, '-', ''), ' ', '') = ?
+        LIMIT 50
         `,
-        [ndc9, ndc9Trim]
+        [ndc11, ndc11Trim]
       );
+
+      // 2) Fallback to AG mapping (innerpack_outer_left9) using the first 9 digits
+      if (results.length === 0 || results[0].values.length === 0) {
+        results = db.exec(
+          `
+          SELECT * FROM drugs
+          WHERE REPLACE(REPLACE(innerpack_outer_left9, '-', ''), ' ', '') = ?
+             OR REPLACE(REPLACE(innerpack_outer_left9, '-', ''), ' ', '') = ?
+          LIMIT 200
+          `,
+          [ndc9, ndc9Trim]
+        );
+      }
+
+      // 3) Last resort: prefix match on NDC by NDC9
+      if (results.length === 0 || results[0].values.length === 0) {
+        results = db.exec(
+          `
+          SELECT * FROM drugs
+          WHERE REPLACE(REPLACE(ndc, '-', ''), ' ', '') LIKE ?
+             OR REPLACE(REPLACE(ndc, '-', ''), ' ', '') LIKE ?
+          LIMIT 200
+          `,
+          [`${ndc9}%`, `${ndc9Trim}%`]
+        );
+      }
 
       if (results.length === 0 || results[0].values.length === 0) {
         return { outerNDCs: [], drugs: [] };
