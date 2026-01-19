@@ -118,7 +118,37 @@ export function useLocalFDA() {
         if (savedDb && savedMeta) {
           const database = new SQL.Database(savedDb);
           setDb(database);
-          setMeta(savedMeta);
+          
+          // Calculate mapping counts if missing (for databases imported before this feature)
+          if (!savedMeta.mapping) {
+            try {
+              const getScalar = (sql: string): number => {
+                const r = database.exec(sql);
+                const v = r?.[0]?.values?.[0]?.[0];
+                const n = typeof v === 'number' ? v : Number(v ?? 0);
+                return Number.isFinite(n) ? n : 0;
+              };
+
+              const agCount = getScalar(
+                "SELECT COUNT(*) FROM drugs WHERE innerpack_outer_left9 IS NOT NULL AND TRIM(innerpack_outer_left9) != ''"
+              );
+              const aeCount = getScalar(
+                "SELECT COUNT(*) FROM drugs WHERE outerpack_ndc IS NOT NULL AND TRIM(outerpack_ndc) != ''"
+              );
+              const pairCount = getScalar(
+                "SELECT COUNT(*) FROM drugs WHERE innerpack_outer_left9 IS NOT NULL AND TRIM(innerpack_outer_left9) != '' AND outerpack_ndc IS NOT NULL AND TRIM(outerpack_ndc) != ''"
+              );
+
+              const updatedMeta = { ...savedMeta, mapping: { agCount, aeCount, pairCount } };
+              await saveToIndexedDB(META_KEY, updatedMeta);
+              setMeta(updatedMeta);
+            } catch (e) {
+              console.error('Failed to calculate mapping counts:', e);
+              setMeta(savedMeta);
+            }
+          } else {
+            setMeta(savedMeta);
+          }
         }
       } catch (err: any) {
         console.error('Failed to initialize SQL.js:', err);
