@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download, GripVertical, Eye, EyeOff, Settings2, FileUp, Cloud, RefreshCw, Search, Calculator } from 'lucide-react';
+import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download, GripVertical, Eye, EyeOff, Settings2, FileUp, Cloud, RefreshCw, Search, Calculator, DollarSign } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -13,6 +13,7 @@ import { useLocalFDA } from '@/hooks/useLocalFDA';
 import { SyncButton } from '@/components/scanner/SyncButton';
 import { OfflineSyncDialog } from '@/components/scanner/OfflineSyncDialog';
 import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
+import { CostDataLookupDialog } from '@/components/scanner/CostDataLookupDialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
@@ -189,6 +190,9 @@ const Scan = () => {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Cost data lookup dialog state
+  const [costLookupDialogOpen, setCostLookupDialogOpen] = useState(false);
   
   const createEmptyRow = useCallback((sectionName?: string): ScanRow => ({
     id: crypto.randomUUID(),
@@ -1868,6 +1872,17 @@ const Scan = () => {
                 />
               </div>
               
+              {/* Cost Data Lookup Button */}
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setCostLookupDialogOpen(true)}
+                disabled={!selectedTemplate}
+              >
+                <DollarSign className="h-4 w-4 mr-1" />
+                Cost Lookup
+              </Button>
+              
               {/* Action buttons */}
               <Button 
                 variant="outline" 
@@ -2254,6 +2269,13 @@ const Scan = () => {
         options={outerNDCOptions}
         onSelect={handleOuterNDCSelect}
         onCancel={handleOuterNDCCancel}
+      />
+
+      {/* Cost Data Lookup Dialog */}
+      <CostDataLookupDialog
+        open={costLookupDialogOpen}
+        onOpenChange={setCostLookupDialogOpen}
+        templateId={selectedTemplate?.id || null}
       />
     </AppLayout>
   );
