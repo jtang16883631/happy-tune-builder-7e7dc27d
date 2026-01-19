@@ -709,12 +709,21 @@ const Scan = () => {
 
     const cleanNdc = scannedNdc.replace(/-/g, '');
     
+    console.log('[NDC Lookup] Starting lookup for:', cleanNdc);
+    console.log('[NDC Lookup] NDC9 key:', cleanNdc.slice(0, 9));
+    
     // Find outer NDCs using NDC9 key
     const { outerNDCs, drugs } = findOuterNDCsByNDC9(cleanNdc);
+    
+    console.log('[NDC Lookup] Found outer NDCs:', outerNDCs);
+    console.log('[NDC Lookup] Found drugs count:', drugs.length);
 
     if (outerNDCs.length === 0) {
+      console.log('[NDC Lookup] No outer NDCs found, trying direct lookup');
       // No outer NDCs found - try direct lookup as fallback
       const directResult = fdaLookup(cleanNdc);
+      console.log('[NDC Lookup] Direct lookup result:', directResult ? 'found' : 'not found');
+      
       if (directResult) {
         // Use the scanned NDC directly
         await lookupNDC(cleanNdc, cleanNdc, rowIndex);
@@ -729,11 +738,13 @@ const Scan = () => {
     }
 
     if (outerNDCs.length === 1) {
+      console.log('[NDC Lookup] Single outer NDC, auto-using:', outerNDCs[0]);
       // Exactly one outer NDC - use it automatically
       await lookupNDC(outerNDCs[0], cleanNdc, rowIndex);
       return true;
     }
 
+    console.log('[NDC Lookup] Multiple outer NDCs found, showing dialog');
     // Multiple outer NDCs - show selection dialog
     const options: OuterNDCOption[] = outerNDCs.map(outerNDC => {
       // Find the drug record that has this outer NDC
