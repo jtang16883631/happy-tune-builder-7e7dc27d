@@ -1200,12 +1200,24 @@ const Scan = () => {
       const masterWorksheet = XLSX.utils.aoa_to_sheet(masterRows);
       masterWorksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
       
-      // Insert Summary and Master as first two sheets
-      const existingSheetNames = [...workbook.SheetNames];
-      const existingSheets = { ...workbook.Sheets };
+      // Clear all sheets and rebuild in correct order: Summary, Master, then sections
+      const sectionSheetNames = [...workbook.SheetNames];
+      const sectionSheets = { ...workbook.Sheets };
       
-      workbook.SheetNames = ['Summary', 'Master', ...existingSheetNames];
-      workbook.Sheets = { 'Summary': summaryWorksheet, 'Master': masterWorksheet, ...existingSheets };
+      // Clear workbook
+      workbook.SheetNames = [];
+      workbook.Sheets = {};
+      
+      // Add Summary first
+      XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
+      
+      // Add Master second
+      XLSX.utils.book_append_sheet(workbook, masterWorksheet, 'Master');
+      
+      // Add all section sheets
+      sectionSheetNames.forEach(name => {
+        XLSX.utils.book_append_sheet(workbook, sectionSheets[name], name);
+      });
 
       // Generate filename with template name and date
       const filename = `${selectedTemplate.name}_${dateStr}_scan.xlsx`;
@@ -1458,12 +1470,24 @@ const Scan = () => {
       const masterWorksheet = XLSX.utils.aoa_to_sheet(masterRows);
       masterWorksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
       
-      // Insert Summary and Master as first two sheets
-      const existingSheetNames = [...workbook.SheetNames];
-      const existingSheets = { ...workbook.Sheets };
+      // Clear all sheets and rebuild in correct order: Summary, Master, then sections
+      const sectionSheetNames = [...workbook.SheetNames];
+      const sectionSheets = { ...workbook.Sheets };
       
-      workbook.SheetNames = ['Summary', 'Master', ...existingSheetNames];
-      workbook.Sheets = { 'Summary': summaryWorksheet, 'Master': masterWorksheet, ...existingSheets };
+      // Clear workbook
+      workbook.SheetNames = [];
+      workbook.Sheets = {};
+      
+      // Add Summary first
+      XLSX.utils.book_append_sheet(workbook, summaryWorksheet, 'Summary');
+      
+      // Add Master second
+      XLSX.utils.book_append_sheet(workbook, masterWorksheet, 'Master');
+      
+      // Add all section sheets
+      sectionSheetNames.forEach(name => {
+        XLSX.utils.book_append_sheet(workbook, sectionSheets[name], name);
+      });
 
       const filename = `${selectedTemplate.name}_${dateStr}_merged_scan.xlsx`;
 
