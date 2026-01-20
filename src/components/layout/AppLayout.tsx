@@ -2,7 +2,7 @@ import { ReactNode, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, Users, ScanBarcode, FolderOpen, Pill, LayoutDashboard, CalendarDays, Clock, PanelLeftClose, PanelLeft, Radio, ClipboardList, AlertTriangle, HardDrive, FileText, Database, ShieldX, MessageSquare } from 'lucide-react';
+import { LogOut, Users, ScanBarcode, FolderOpen, Pill, LayoutDashboard, CalendarDays, Clock, PanelLeftClose, PanelLeft, Radio, ClipboardList, AlertTriangle, HardDrive, FileText, Database, ShieldX, MessageSquare, UserCog } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell';
@@ -248,7 +248,7 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
 
         {/* User Section */}
         <div className="p-4 border-t border-white/10">
-          <div className="flex items-center gap-3 mb-3">
+          <Link to="/auth" className="flex items-center gap-3 mb-3 p-2 -m-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer">
             <Avatar className="h-9 w-9">
               <AvatarImage src={user?.user_metadata?.avatar_url} alt="Avatar" />
               <AvatarFallback className="bg-white/20 text-white text-sm">
@@ -263,7 +263,8 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
                 <span className="text-xs text-white/60">{getRoleLabel()}</span>
               )}
             </div>
-          </div>
+            <UserCog className="h-4 w-4 text-white/60" />
+          </Link>
           <Button
             variant="ghost"
             size="sm"
