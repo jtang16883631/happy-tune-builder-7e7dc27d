@@ -41,15 +41,22 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
   const [status, setStatus] = useState('');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasInitializedSelection = useRef(false);
 
   const { templates, getSections, syncMeta, isReady: templatesReady } = useOfflineTemplates();
   const { templates: cloudTemplates, isLoading: cloudLoading } = useCloudTemplates();
   const { meta: fdaMeta, isReady: fdaReady, searchDrugs } = useLocalFDA();
   
-  // Pre-select currently synced templates when opening selection
+  // Pre-select currently synced templates ONLY when first opening selection mode
   useEffect(() => {
-    if (mode === 'select-templates' && templates.length > 0) {
-      setSelectedTemplateIds(templates.map(t => t.cloud_id || t.id));
+    if (mode === 'select-templates' && !hasInitializedSelection.current) {
+      hasInitializedSelection.current = true;
+      // Pre-select templates that are already synced locally
+      const syncedCloudIds = templates.map(t => t.cloud_id).filter(Boolean) as string[];
+      setSelectedTemplateIds(syncedCloudIds);
+    } else if (mode !== 'select-templates') {
+      // Reset when leaving selection mode
+      hasInitializedSelection.current = false;
     }
   }, [mode, templates]);
 
