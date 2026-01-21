@@ -590,17 +590,19 @@ const Index = () => {
         {hasRole && (
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Import Templates</CardTitle>
+              <CardTitle className="text-lg">Import Templates with Cost Data</CardTitle>
               <CardDescription>
-                Upload matching pairs of cost data and job ticket files
+                Upload matching pairs of cost data and job ticket files for audit templates
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-center py-8 border-2 border-dashed rounded-lg">
                 <Files className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h4 className="font-medium mb-2">Import Tickets + Cost Data</h4>
+                <h4 className="font-medium mb-2">Import Cost Data + Job Ticket Pairs</h4>
                 <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-                  Upload matching pairs of cost data and job ticket files. Files are matched by invoice number.
+                  Upload matching pairs of cost data and job ticket files for audit templates. Files are matched by invoice number.
+                  <br />
+                  <span className="text-xs">For ticket-only uploads, use the Ticket Database page.</span>
                 </p>
                 <Button onClick={() => bulkInputRef.current?.click()}>
                   <Upload className="mr-2 h-4 w-4" />
