@@ -25,7 +25,6 @@ import {
 } from '@/components/ui/select';
 import { useAllScheduleEvents, useTeamMembers, ScheduleEvent } from '@/hooks/useScheduleEvents';
 import { useLiveTracker, STAGE_CONFIG } from '@/hooks/useLiveTracker';
-import { useCloudTemplates } from '@/hooks/useCloudTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format, getYear } from 'date-fns';
@@ -51,16 +50,15 @@ export default function Tickets() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { roles } = useAuth();
+  const { roles, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const ticketInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: allEvents = [], isLoading: eventsLoading } = useAllScheduleEvents();
+  const { data: allEvents = [], isLoading: eventsLoading, refetch: refetchEvents } = useAllScheduleEvents();
   const { data: teamMembers = [] } = useTeamMembers();
   const { jobs } = useLiveTracker();
-  const { importTicketOnly, refetch: refetchTemplates } = useCloudTemplates();
 
   const [importProgress, setImportProgress] = useState<ImportProgress>({
     status: 'idle',
@@ -209,6 +207,229 @@ export default function Tickets() {
     );
   };
 
+  // Parse job ticket Excel to extract metadata and sections
+  const parseJobTicket = (rawData: any[][], fileName: string): {
+    invDate: string | null;
+    invNumber: string | null;
+    facilityName: string | null;
+    address: string | null;
+    phone: string | null;
+    corporateContact: string | null;
+    onsiteContact: string | null;
+    sections: { sect: string; description: string; costSheet: string | null }[];
+  } => {
+    let invDate: string | null = null;
+    let invNumber: string | null = null;
+    let facilityName: string | null = null;
+    let address: string | null = null;
+    let phone: string | null = null;
+    let corporateContact: string | null = null;
+    let onsiteContact: string | null = null;
+    const sections: { sect: string; description: string; costSheet: string | null }[] = [];
+
+    // Try to extract invoice number from filename
+    const fileNameWithoutExt = fileName.replace(/\.(xlsx?|xls)$/i, '');
+    const invoiceMatch = fileNameWithoutExt.match(/^(\d{8})/);
+    if (invoiceMatch) {
+      invNumber = invoiceMatch[1];
+    }
+
+    // Scan raw data for metadata
+    for (let r = 0; r < rawData.length; r++) {
+      for (let c = 0; c < rawData[r].length; c++) {
+        const cellValue = String(rawData[r][c] || '').toLowerCase().trim();
+
+        if (cellValue === 'facility name' || cellValue.includes('facility name')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            facilityName = String(rawData[r][c + 1]).trim();
+          }
+        }
+
+        if (cellValue === 'address' || cellValue.includes('address')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            address = String(rawData[r][c + 1]).trim();
+          }
+        }
+
+        if (cellValue === 'phone' || cellValue.includes('phone')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            phone = String(rawData[r][c + 1]).trim();
+          }
+        }
+
+        if (cellValue.includes('corporate') && cellValue.includes('contact')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            corporateContact = String(rawData[r][c + 1]).trim();
+          }
+        }
+
+        if (cellValue.includes('onsite') && cellValue.includes('contact')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            onsiteContact = String(rawData[r][c + 1]).trim();
+          }
+        }
+
+        if (cellValue === 'inv. #' || cellValue === 'inv #' || cellValue === 'inv.#' || 
+            cellValue === 'invoice #' || cellValue === 'invoice number' || 
+            cellValue.includes('inv. #') || cellValue.includes('invoice #')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            const parsedInvNum = String(rawData[r][c + 1]).trim();
+            if (parsedInvNum) {
+              invNumber = parsedInvNum;
+            }
+          }
+        }
+
+        if (cellValue === 'inv. date' || cellValue === 'inv date' || cellValue.includes('inv. date')) {
+          if (c + 1 < rawData[r].length && rawData[r][c + 1]) {
+            const rawDate = rawData[r][c + 1];
+            if (rawDate) {
+              try {
+                if (typeof rawDate === 'number') {
+                  const date = new Date((rawDate - 25569) * 86400 * 1000);
+                  invDate = date.toISOString().split('T')[0];
+                } else {
+                  const parsed = new Date(rawDate);
+                  if (!isNaN(parsed.getTime())) {
+                    invDate = parsed.toISOString().split('T')[0];
+                  } else {
+                    invDate = String(rawDate);
+                  }
+                }
+              } catch {
+                invDate = String(rawDate);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Find Section List header and parse sections
+    let sectionListRowIndex = -1;
+    for (let r = 0; r < rawData.length; r++) {
+      const rowText = rawData[r].map((c) => String(c || '').toLowerCase()).join(' ');
+      if (rowText.includes('section list')) {
+        sectionListRowIndex = r;
+        break;
+      }
+    }
+
+    if (sectionListRowIndex >= 0) {
+      let headerRowIndex = -1;
+      let sectCol = 0;
+      let descCol = 1;
+      let costSheetCol = -1;
+
+      for (let r = sectionListRowIndex; r < Math.min(sectionListRowIndex + 30, rawData.length); r++) {
+        const rowLower = rawData[r].map((c) => String(c || '').toLowerCase());
+        const sectIdx = rowLower.findIndex((v) => v.includes('sect'));
+        const descIdx = rowLower.findIndex((v) => v.includes('description'));
+        const costSheetIdx = rowLower.findIndex((v) => v.includes('cost') && v.includes('sheet'));
+
+        if (sectIdx >= 0 && descIdx >= 0) {
+          headerRowIndex = r;
+          sectCol = sectIdx;
+          descCol = descIdx;
+          costSheetCol = costSheetIdx;
+          break;
+        }
+      }
+
+      if (headerRowIndex === -1) {
+        headerRowIndex = sectionListRowIndex + 1;
+      }
+
+      for (let r = headerRowIndex + 1; r < rawData.length; r++) {
+        const sectRaw = String(rawData[r][sectCol] || '').trim();
+        const descRaw = String(rawData[r][descCol] || '').trim();
+        const costSheetRaw = costSheetCol >= 0 ? String(rawData[r][costSheetCol] || '').trim() : null;
+
+        if (!sectRaw && !descRaw) break;
+
+        const sectDigits = sectRaw.replace(/\D/g, '');
+        const paddedSect = sectDigits ? sectDigits.padStart(4, '0') : '';
+
+        sections.push({
+          sect: paddedSect || sectRaw,
+          description: descRaw,
+          costSheet: costSheetRaw || null,
+        });
+      }
+    }
+
+    return { invDate, invNumber, facilityName, address, phone, corporateContact, onsiteContact, sections };
+  };
+
+  // Import ticket to scheduled_jobs table
+  const importTicketToScheduledJobs = async (
+    rawData: any[][],
+    fileName: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    try {
+      const parsed = parseJobTicket(rawData, fileName);
+
+      // Use invoice date or fallback to today
+      const jobDate = parsed.invDate || new Date().toISOString().split('T')[0];
+
+      // Check if job with same invoice number already exists
+      if (parsed.invNumber) {
+        const { data: existing } = await supabase
+          .from('scheduled_jobs')
+          .select('id')
+          .eq('invoice_number', parsed.invNumber)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          return { success: false, error: 'Ticket with this invoice number already exists' };
+        }
+      }
+
+      // Insert scheduled job
+      const { data: jobData, error: jobError } = await supabase
+        .from('scheduled_jobs')
+        .insert({
+          client_name: parsed.facilityName || `Ticket ${parsed.invNumber || fileName}`,
+          job_date: jobDate,
+          invoice_number: parsed.invNumber,
+          address: parsed.address,
+          phone: parsed.phone,
+          corporate_contact: parsed.corporateContact,
+          onsite_contact: parsed.onsiteContact,
+          event_type: 'work',
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (jobError) throw jobError;
+
+      // Insert sections to scheduled_job_sections
+      if (parsed.sections.length > 0) {
+        const sectionInserts = parsed.sections.map((s) => ({
+          schedule_job_id: jobData.id,
+          sect: s.sect,
+          description: s.description,
+          full_section: `${s.sect}-${s.description}`,
+          cost_sheet: s.costSheet,
+        }));
+
+        const { error: sectionsError } = await supabase
+          .from('scheduled_job_sections')
+          .insert(sectionInserts);
+
+        if (sectionsError) console.error('Error inserting sections:', sectionsError);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Import ticket error:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
   // Handle tickets-only import
   const handleTicketsImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -289,7 +510,7 @@ export default function Tickets() {
 
       try {
         const jobTicketData = await parseExcelFile(file);
-        const result = await importTicketOnly(inv, jobTicketData.rawData, file.name, true);
+        const result = await importTicketToScheduledJobs(jobTicketData.rawData, file.name);
 
         if (result.success) {
           successful++;
@@ -314,9 +535,9 @@ export default function Tickets() {
     }
 
     try {
-      await refetchTemplates();
+      await refetchEvents();
     } catch (err: any) {
-      console.error('Refetch templates failed:', err);
+      console.error('Refetch events failed:', err);
     }
 
     flushSync(() => {
@@ -329,7 +550,7 @@ export default function Tickets() {
 
     toast({
       title: failed > 0 ? 'Import finished with errors' : 'Import complete',
-      description: `${successful} templates created, ${failed} failed.`,
+      description: `${successful} tickets imported, ${failed} failed.`,
       ...(failed > 0 ? { variant: 'destructive' as const } : {}),
     });
 
