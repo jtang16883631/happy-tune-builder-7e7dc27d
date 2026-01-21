@@ -618,33 +618,39 @@ export default function Tickets() {
   const saveInlineEdit = async () => {
     if (!editingCell) return;
     
+    const cellToSave = editingCell;
+    const valueToSave = editValue;
+    
+    // Clear editing state first
+    setEditingCell(null);
+    setEditValue('');
+    
     try {
       const updateData: Record<string, any> = {};
       
-      if (editingCell.field === 'invoice_number') {
-        updateData.invoice_number = editValue.trim() || null;
-      } else if (editingCell.field === 'client_name') {
-        updateData.client_name = editValue.trim() || null;
-      } else if (editingCell.field === 'job_date') {
+      if (cellToSave.field === 'invoice_number') {
+        updateData.invoice_number = valueToSave.trim() || null;
+      } else if (cellToSave.field === 'client_name') {
+        updateData.client_name = valueToSave.trim() || null;
+      } else if (cellToSave.field === 'job_date') {
         // Validate date format
-        const dateValue = new Date(editValue);
+        const dateValue = new Date(valueToSave);
         if (isNaN(dateValue.getTime())) {
           toast({ title: 'Invalid date format', variant: 'destructive' });
           return;
         }
-        updateData.job_date = editValue;
-      } else if (editingCell.field === 'address') {
-        updateData.address = editValue.trim() || null;
+        updateData.job_date = valueToSave;
+      } else if (cellToSave.field === 'address') {
+        updateData.address = valueToSave.trim() || null;
       }
 
       const { error } = await supabase
         .from('scheduled_jobs')
         .update(updateData)
-        .eq('id', editingCell.id);
+        .eq('id', cellToSave.id);
 
       if (error) throw error;
 
-      cancelEditing();
       refetchEvents();
       toast({ title: 'Updated successfully' });
     } catch (err: any) {
@@ -971,23 +977,21 @@ export default function Tickets() {
                       {/* Invoice Number - Editable */}
                       <TableCell 
                         className="font-mono font-bold text-primary p-0"
-                        onDoubleClick={() => startEditing(ticket.id, 'invoice_number', ticket.invoice_number || '')}
+                        onClick={() => !isEditingInvoice && startEditing(ticket.id, 'invoice_number', ticket.invoice_number || '')}
                       >
                         {isEditingInvoice ? (
                           <Input
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            onBlur={saveInlineEdit}
+                            onBlur={() => setTimeout(saveInlineEdit, 100)}
                             autoFocus
-                            className="h-8 text-sm font-mono border-primary"
+                            className="h-8 text-sm font-mono border-primary m-1"
+                            onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
-                          <div 
-                            className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center"
-                            onClick={() => startEditing(ticket.id, 'invoice_number', ticket.invoice_number || '')}
-                          >
-                            {ticket.invoice_number || <span className="text-muted-foreground italic">-</span>}
+                          <div className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center">
+                            {ticket.invoice_number || <span className="text-muted-foreground italic">Click to add</span>}
                           </div>
                         )}
                       </TableCell>
@@ -995,23 +999,21 @@ export default function Tickets() {
                       {/* Client Name - Editable */}
                       <TableCell 
                         className="p-0"
-                        onDoubleClick={() => startEditing(ticket.id, 'client_name', ticket.client_name || '')}
+                        onClick={() => !isEditingClient && startEditing(ticket.id, 'client_name', ticket.client_name || '')}
                       >
                         {isEditingClient ? (
                           <Input
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            onBlur={saveInlineEdit}
+                            onBlur={() => setTimeout(saveInlineEdit, 100)}
                             autoFocus
-                            className="h-8 text-sm border-primary"
+                            className="h-8 text-sm border-primary m-1"
+                            onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
-                          <div 
-                            className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center font-medium"
-                            onClick={() => startEditing(ticket.id, 'client_name', ticket.client_name || '')}
-                          >
-                            {ticket.client_name || <span className="text-muted-foreground italic">-</span>}
+                          <div className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center font-medium">
+                            {ticket.client_name || <span className="text-muted-foreground italic">Click to add</span>}
                           </div>
                         )}
                       </TableCell>
@@ -1019,7 +1021,7 @@ export default function Tickets() {
                       {/* Job Date - Editable */}
                       <TableCell 
                         className="p-0"
-                        onDoubleClick={() => startEditing(ticket.id, 'job_date', ticket.job_date)}
+                        onClick={() => !isEditingDate && startEditing(ticket.id, 'job_date', ticket.job_date)}
                       >
                         {isEditingDate ? (
                           <Input
@@ -1027,15 +1029,13 @@ export default function Tickets() {
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            onBlur={saveInlineEdit}
+                            onBlur={() => setTimeout(saveInlineEdit, 100)}
                             autoFocus
-                            className="h-8 text-sm border-primary"
+                            className="h-8 text-sm border-primary m-1"
+                            onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
-                          <div 
-                            className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center"
-                            onClick={() => startEditing(ticket.id, 'job_date', ticket.job_date)}
-                          >
+                          <div className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center">
                             {format(new Date(ticket.job_date), 'M/d/yyyy')}
                           </div>
                         )}
@@ -1044,23 +1044,21 @@ export default function Tickets() {
                       {/* Address - Editable */}
                       <TableCell 
                         className="p-0 max-w-[250px]"
-                        onDoubleClick={() => startEditing(ticket.id, 'address', ticket.address || '')}
+                        onClick={() => !isEditingAddress && startEditing(ticket.id, 'address', ticket.address || '')}
                       >
                         {isEditingAddress ? (
                           <Input
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            onBlur={saveInlineEdit}
+                            onBlur={() => setTimeout(saveInlineEdit, 100)}
                             autoFocus
-                            className="h-8 text-sm border-primary"
+                            className="h-8 text-sm border-primary m-1"
+                            onClick={(e) => e.stopPropagation()}
                           />
                         ) : (
-                          <div 
-                            className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center text-muted-foreground truncate"
-                            onClick={() => startEditing(ticket.id, 'address', ticket.address || '')}
-                          >
-                            {ticket.address || <span className="italic">-</span>}
+                          <div className="px-4 py-3 cursor-text hover:bg-muted/30 min-h-[44px] flex items-center text-muted-foreground truncate">
+                            {ticket.address || <span className="italic">Click to add</span>}
                           </div>
                         )}
                       </TableCell>
