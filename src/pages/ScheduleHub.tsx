@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
 export default function ScheduleHub() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [viewTab, setViewTab] = useState<'agenda' | 'calendar' | 'type'>('agenda');
   const [builderOpen, setBuilderOpen] = useState(false);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
@@ -53,6 +55,20 @@ export default function ScheduleHub() {
   const { data: allEvents = [] } = useAllScheduleEvents();
   const { data: teamMembers = [] } = useTeamMembers();
   const deleteMutation = useDeleteScheduleEvent();
+
+  // Handle direct link to a specific job via URL parameter
+  useEffect(() => {
+    const jobId = searchParams.get('jobId');
+    if (jobId && allEvents.length > 0) {
+      const event = allEvents.find((e) => e.id === jobId);
+      if (event) {
+        setEditingEvent(event);
+        setBuilderOpen(true);
+        // Clear the URL param after opening
+        setSearchParams({});
+      }
+    }
+  }, [searchParams, allEvents, setSearchParams]);
 
   const handleEditEvent = (event: ScheduleEvent) => {
     setEditingEvent(event);

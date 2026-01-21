@@ -129,10 +129,13 @@ export function LiveTrackerJobCard({
             <Badge 
               variant="outline" 
               className="text-[10px] border-primary/50 text-primary cursor-pointer hover:bg-primary/10 gap-0.5"
-              onClick={() => navigate('/schedule')}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/schedule?jobId=${job.schedule_job_id}`);
+              }}
             >
               <CalendarDays className="h-2.5 w-2.5" />
-              Scheduled
+              View Ticket
             </Badge>
           )}
           {job.group_name && (
