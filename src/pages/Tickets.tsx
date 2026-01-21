@@ -30,10 +30,22 @@ import { useAuth } from '@/contexts/AuthContext';
 import { format, getYear } from 'date-fns';
 import { 
   Search, Loader2, ArrowLeft, Printer, Radio, Database, Calendar, 
-  Upload, FileText, CheckCircle, XCircle, FileSpreadsheet 
+  Upload, FileText, CheckCircle, XCircle, FileSpreadsheet, Pencil, Trash2 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TicketDetail } from '@/components/tickets/TicketDetail';
+import { ScheduleBuilder } from '@/components/schedule/ScheduleBuilder';
+import { useDeleteScheduleEvent } from '@/hooks/useScheduleEvents';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import * as XLSX from 'xlsx';
 
 interface ImportProgress {
@@ -55,10 +67,13 @@ export default function Tickets() {
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const ticketInputRef = useRef<HTMLInputElement>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const { data: allEvents = [], isLoading: eventsLoading, refetch: refetchEvents } = useAllScheduleEvents();
   const { data: teamMembers = [] } = useTeamMembers();
   const { jobs } = useLiveTracker();
+  const deleteEvent = useDeleteScheduleEvent();
 
   const [importProgress, setImportProgress] = useState<ImportProgress>({
     status: 'idle',
@@ -564,12 +579,27 @@ export default function Tickets() {
     return Math.round((importProgress.processed / importProgress.total) * 100);
   })();
 
+  // Handle delete confirmation
+  const handleDeleteTicket = async () => {
+    if (!selectedEvent) return;
+    await deleteEvent.mutateAsync(selectedEvent.id);
+    setDeleteDialogOpen(false);
+    setSelectedEvent(null);
+    refetchEvents();
+  };
+
+  // Handle edit save callback
+  const handleEditComplete = () => {
+    setEditDialogOpen(false);
+    refetchEvents();
+  };
+
   // If a ticket is selected, show the detail view
   if (selectedEvent) {
     return (
       <AppLayout fullWidth>
         <div className="space-y-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
             <Button variant="ghost" size="sm" onClick={handleBack} className="gap-2">
               <ArrowLeft className="h-4 w-4" />
               Back to Database
@@ -589,6 +619,25 @@ export default function Tickets() {
                 View in Tracker
               </Button>
             )}
+            <div className="flex-1" />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setEditDialogOpen(true)}
+              className="gap-2"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit Ticket
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={() => setDeleteDialogOpen(true)}
+              className="gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
           </div>
           <TicketDetail 
             event={selectedEvent} 
@@ -596,6 +645,42 @@ export default function Tickets() {
             trackerJob={getTrackerJob(selectedEvent.id)}
           />
         </div>
+
+        {/* Edit Dialog */}
+        <ScheduleBuilder
+          event={selectedEvent}
+          open={editDialogOpen}
+          onOpenChange={(open) => {
+            setEditDialogOpen(open);
+            if (!open) {
+              refetchEvents();
+            }
+          }}
+          teamMembers={teamMembers}
+        />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Ticket?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the ticket for "{selectedEvent.client_name}" 
+                {selectedEvent.invoice_number && ` (Invoice #${selectedEvent.invoice_number})`}.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleDeleteTicket}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </AppLayout>
     );
   }
