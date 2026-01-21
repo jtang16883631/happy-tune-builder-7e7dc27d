@@ -683,6 +683,7 @@ export type Database = {
           location_to: string | null
           notes: string | null
           onsite_contact: string | null
+          original_file_path: string | null
           partial_inventory: boolean | null
           phone: string | null
           previous_inventory_value: string | null
@@ -719,6 +720,7 @@ export type Database = {
           location_to?: string | null
           notes?: string | null
           onsite_contact?: string | null
+          original_file_path?: string | null
           partial_inventory?: boolean | null
           phone?: string | null
           previous_inventory_value?: string | null
@@ -755,6 +757,7 @@ export type Database = {
           location_to?: string | null
           notes?: string | null
           onsite_contact?: string | null
+          original_file_path?: string | null
           partial_inventory?: boolean | null
           phone?: string | null
           previous_inventory_value?: string | null
