@@ -3,7 +3,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download, GripVertical, Eye, EyeOff, Settings2, FileUp, Cloud, RefreshCw, Search, Calculator, DollarSign, ShieldCheck, BarChart3 } from 'lucide-react';
+import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download, GripVertical, Eye, EyeOff, Settings2, FileUp, Cloud, RefreshCw, Search, Calculator, DollarSign, ShieldCheck, BarChart3, HardDrive } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import * as XLSX from 'xlsx';
@@ -14,6 +14,7 @@ import { useOfflineTemplates, OfflineTemplate } from '@/hooks/useOfflineTemplate
 import { useLocalFDA } from '@/hooks/useLocalFDA';
 import { SyncButton } from '@/components/scanner/SyncButton';
 import { OfflineSyncDialog } from '@/components/scanner/OfflineSyncDialog';
+import { OfflineDataTransferDialog } from '@/components/scanner/OfflineDataTransferDialog';
 import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
 import { CostDataLookupDialog } from '@/components/scanner/CostDataLookupDialog';
 import { ScanSummaryTab } from '@/components/scanner/ScanSummaryTab';
@@ -164,6 +165,9 @@ const Scan = () => {
 
   // State for offline sync dialog
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  
+  // State for offline data transfer dialog
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
 
   // State for outer NDC selection dialog
   const [outerNDCDialogOpen, setOuterNDCDialogOpen] = useState(false);
@@ -1687,6 +1691,16 @@ const Scan = () => {
                   <span className="hidden sm:inline">Sync for Offline</span>
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setTransferDialogOpen(true)}
+                className="gap-2"
+                title="Export/Import offline data via flash drive"
+              >
+                <HardDrive className="h-4 w-4" />
+                <span className="hidden sm:inline">Transfer</span>
+              </Button>
               <SyncButton
                 isOnline={isOnline}
                 isSyncing={isSyncing}
@@ -1722,6 +1736,12 @@ const Scan = () => {
             onSyncTemplates={syncSelectedTemplates}
             isSyncing={isSyncing}
             syncProgress={syncProgress}
+          />
+
+          {/* Offline Data Transfer Dialog */}
+          <OfflineDataTransferDialog
+            open={transferDialogOpen}
+            onOpenChange={setTransferDialogOpen}
           />
 
           {sortedTemplates.length === 0 ? (
