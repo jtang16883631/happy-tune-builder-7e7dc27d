@@ -1033,6 +1033,7 @@ export type Database = {
         | "owner"
         | "office_admin"
       job_workflow_stage:
+        | "scheduled_jobs"
         | "making_price_files"
         | "pricing_complete"
         | "files_built"
@@ -1180,6 +1181,7 @@ export const Constants = {
         "office_admin",
       ],
       job_workflow_stage: [
+        "scheduled_jobs",
         "making_price_files",
         "pricing_complete",
         "files_built",
