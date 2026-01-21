@@ -72,6 +72,8 @@ export function usePreviousInvoiceLookup() {
             .from('template_sections')
             .select('sect, description, full_section, cost_sheet')
             .eq('template_id', relatedTemplates[0].id)
+            .not('sect', 'is', null)
+            .neq('sect', '')
             .order('sect');
           
           if (templateSections) {
@@ -124,12 +126,14 @@ export function usePreviousInvoiceLookup() {
       if (templates && templates.length > 0) {
         const template = templates[0];
         
-        // Fetch sections for this template
+        // Fetch sections for this template (only those with sect values)
         let sections: PreviousSection[] = [];
         const { data: templateSections } = await supabase
           .from('template_sections')
           .select('sect, description, full_section, cost_sheet')
           .eq('template_id', template.id)
+          .not('sect', 'is', null)
+          .neq('sect', '')
           .order('sect');
         
         if (templateSections) {
