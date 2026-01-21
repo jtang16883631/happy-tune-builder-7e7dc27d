@@ -444,26 +444,51 @@ export function ScheduleBuilder({
                       </Button>
                     </div>
                     {foundJob && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                          Found: {foundJob.client_name}
-                        </Badge>
-                        <span className="text-muted-foreground">
-                          from {foundJob.source === 'scheduled_jobs' ? 'previous schedule' : 'template'} ({foundJob.original_invoice})
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={clearFoundJob}
-                          className="h-6 w-6 p-0"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                            Found: {foundJob.client_name}
+                          </Badge>
+                          <span className="text-muted-foreground">
+                            from {foundJob.source === 'scheduled_jobs' ? 'previous schedule' : 'template'} ({foundJob.original_invoice})
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={clearFoundJob}
+                            className="h-6 w-6 p-0"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        
+                        {/* Display Section List from previous ticket */}
+                        {foundJob.sections && foundJob.sections.length > 0 && (
+                          <div className="border rounded-md p-3 bg-background">
+                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                              Section List ({foundJob.sections.length} sections)
+                            </p>
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {foundJob.sections.map((section, idx) => (
+                                <div key={idx} className="flex items-center gap-2 text-xs">
+                                  <span className="font-mono font-medium text-primary">{section.sect}</span>
+                                  <span className="text-muted-foreground">-</span>
+                                  <span className="truncate">{section.description || section.full_section}</span>
+                                  {section.cost_sheet && (
+                                    <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                      {section.cost_sheet}
+                                    </Badge>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      Enter a previous invoice number to auto-fill client info from last year's ticket
+                      Enter a previous invoice number to auto-fill client info and sections from last year's ticket
                     </p>
                   </CardContent>
                 </Card>

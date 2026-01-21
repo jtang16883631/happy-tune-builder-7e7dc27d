@@ -2,6 +2,13 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
+export interface PreviousSection {
+  sect: string;
+  description: string | null;
+  full_section: string | null;
+  cost_sheet: string | null;
+}
+
 export interface PreviousJobData {
   client_name: string;
   client_id: string | null;
@@ -18,6 +25,8 @@ export interface PreviousJobData {
   partial_inventory: boolean | null;
   client_onsite: boolean | null;
   hotel_info: string | null;
+  // Section list from previous ticket
+  sections: PreviousSection[];
   // Source info
   source: 'scheduled_jobs' | 'data_templates';
   source_id: string;
@@ -49,6 +58,27 @@ export function usePreviousInvoiceLookup() {
 
       if (scheduledJobs && scheduledJobs.length > 0) {
         const job = scheduledJobs[0];
+        
+        // Try to find related template for sections
+        let sections: PreviousSection[] = [];
+        const { data: relatedTemplates } = await supabase
+          .from('data_templates')
+          .select('id')
+          .or(`inv_number.ilike.%${invoiceNumber}%,name.ilike.%${invoiceNumber}%`)
+          .limit(1);
+        
+        if (relatedTemplates && relatedTemplates.length > 0) {
+          const { data: templateSections } = await supabase
+            .from('template_sections')
+            .select('sect, description, full_section, cost_sheet')
+            .eq('template_id', relatedTemplates[0].id)
+            .order('sect');
+          
+          if (templateSections) {
+            sections = templateSections;
+          }
+        }
+
         const result: PreviousJobData = {
           client_name: job.client_name,
           client_id: job.client_id,
@@ -65,6 +95,7 @@ export function usePreviousInvoiceLookup() {
           partial_inventory: job.partial_inventory,
           client_onsite: job.client_onsite,
           hotel_info: job.hotel_info,
+          sections,
           source: 'scheduled_jobs',
           source_id: job.id,
           original_invoice: job.invoice_number || invoiceNumber,
@@ -72,7 +103,7 @@ export function usePreviousInvoiceLookup() {
         setFoundJob(result);
         toast({
           title: 'Previous job found!',
-          description: `Found: ${job.client_name} (${job.invoice_number})`,
+          description: `Found: ${job.client_name} (${job.invoice_number})${sections.length > 0 ? ` with ${sections.length} sections` : ''}`,
         });
         return result;
       }
@@ -92,6 +123,19 @@ export function usePreviousInvoiceLookup() {
 
       if (templates && templates.length > 0) {
         const template = templates[0];
+        
+        // Fetch sections for this template
+        let sections: PreviousSection[] = [];
+        const { data: templateSections } = await supabase
+          .from('template_sections')
+          .select('sect, description, full_section, cost_sheet')
+          .eq('template_id', template.id)
+          .order('sect');
+        
+        if (templateSections) {
+          sections = templateSections;
+        }
+
         const result: PreviousJobData = {
           client_name: template.facility_name || template.name,
           client_id: null,
@@ -108,14 +152,15 @@ export function usePreviousInvoiceLookup() {
           partial_inventory: null,
           client_onsite: null,
           hotel_info: null,
+          sections,
           source: 'data_templates',
           source_id: template.id,
-          original_invoice: template.inv_number || invoiceNumber,
+          original_invoice: template.inv_number || template.name || invoiceNumber,
         };
         setFoundJob(result);
         toast({
           title: 'Previous template found!',
-          description: `Found: ${template.facility_name || template.name} (${template.inv_number})`,
+          description: `Found: ${template.facility_name || template.name}${sections.length > 0 ? ` with ${sections.length} sections` : ''}`,
         });
         return result;
       }
