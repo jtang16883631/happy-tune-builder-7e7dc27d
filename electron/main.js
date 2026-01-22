@@ -28,12 +28,12 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Load the app
-  if (process.env.NODE_ENV === 'development') {
+  // Load the app - use app.isPackaged for reliable detection
+  if (app.isPackaged) {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  } else {
     mainWindow.loadURL('http://localhost:8080');
     mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   mainWindow.on('closed', () => {
