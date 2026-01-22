@@ -697,9 +697,13 @@ const Scan = () => {
       const updated = [...prev];
       // Only set NDC to the resolved outer NDC (finalNdc), NOT the scanned NDC
       // scannedNdc is stored separately for reference
+      // Only populate NDC column if the outer NDC is DIFFERENT from the scanned NDC
+      // If they're the same, leave NDC blank to avoid redundant data
+      const outerNdcIsDifferent = cleanNdc !== originalScanned.replace(/\D/g, '');
+      
       updated[rowIndex] = {
         ...updated[rowIndex],
-        ndc: cleanNdc, // This is the finalNdc (outer NDC from lookup/selection)
+        ndc: outerNdcIsDifferent ? cleanNdc : '', // Only show if different from scanned
         scannedNdc: originalScanned, // Store the original scanned NDC separately
         rec,
         device: '', // Device stays blank
