@@ -3,7 +3,7 @@ import { lazy, Suspense } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { UpdateNotification } from "@/components/UpdateNotification";
 import { OfflineRedirect, useOnlineStatus } from "@/components/OfflineRedirect";
@@ -192,11 +192,11 @@ const App = () => (
       <Toaster />
       <Sonner />
       <UpdateNotification />
-      <BrowserRouter>
+      <HashRouter>
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
-      </BrowserRouter>
+      </HashRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
