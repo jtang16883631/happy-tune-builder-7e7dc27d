@@ -34,19 +34,27 @@ function useOAuthHashHandler() {
 
   useEffect(() => {
     const handleOAuthHash = async () => {
+      // Check both hash and full URL for OAuth tokens
+      const fullUrl = window.location.href;
       const hash = window.location.hash;
       
-      // Check if hash contains OAuth tokens (access_token in the fragment)
-      if (hash && hash.includes('access_token=')) {
+      // Look for access_token anywhere in the URL (hash or query params after hash)
+      const hasOAuthTokens = fullUrl.includes('access_token=') || hash.includes('access_token=');
+      
+      if (hasOAuthTokens) {
         try {
-          // Extract the token portion - it might be after #/ or just #
-          let tokenHash = hash;
-          if (hash.startsWith('#/')) {
-            tokenHash = '#' + hash.substring(2);
+          // Extract the token portion - could be in various formats:
+          // #access_token=... or #/access_token=... or #/auth#access_token=...
+          let tokenString = '';
+          
+          // Find where access_token starts in the URL
+          const accessTokenIndex = fullUrl.indexOf('access_token=');
+          if (accessTokenIndex !== -1) {
+            tokenString = fullUrl.substring(accessTokenIndex);
           }
           
-          // Parse the hash as URL params
-          const hashParams = new URLSearchParams(tokenHash.substring(1));
+          // Parse as URL params
+          const hashParams = new URLSearchParams(tokenString);
           const accessToken = hashParams.get('access_token');
           const refreshToken = hashParams.get('refresh_token');
           
