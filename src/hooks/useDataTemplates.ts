@@ -723,6 +723,80 @@ export function useDataTemplates() {
     }
   }, [db]);
 
+  // Export database to binary format (.templatedb)
+  const exportDatabase = useCallback((): { data: Uint8Array; meta: TemplateMeta } | null => {
+    if (!db || !meta) return null;
+    
+    try {
+      const dbData = db.export();
+      return { data: new Uint8Array(dbData), meta };
+    } catch (err) {
+      console.error('Export database error:', err);
+      return null;
+    }
+  }, [db, meta]);
+
+  // Import database from binary format (.templatedb)
+  const importDatabase = useCallback(async (data: Uint8Array, importedMeta: TemplateMeta): Promise<{ success: boolean; error?: string }> => {
+    if (!sqlRef.current) return { success: false, error: 'SQL.js not initialized' };
+
+    try {
+      // Close existing database
+      if (db) {
+        db.close();
+      }
+
+      // Create new database from imported data
+      const newDb = new sqlRef.current.Database(data);
+      setDb(newDb);
+
+      // Save to IndexedDB
+      await saveToIndexedDB(DB_KEY, data);
+      await saveToIndexedDB(META_KEY, importedMeta);
+      setMeta(importedMeta);
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Import database error:', err);
+      return { success: false, error: err.message };
+    }
+  }, [db]);
+
+  // Get all cost items for export
+  const getAllCostItems = useCallback((templateId: number): TemplateCostItem[] => {
+    if (!db) return [];
+
+    try {
+      const results = db.exec(`
+        SELECT id, template_id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name
+        FROM cost_items
+        WHERE template_id = ?
+      `, [templateId]);
+
+      if (results.length === 0) return [];
+
+      return results[0].values.map((row: any[]) => ({
+        id: row[0] as number,
+        template_id: row[1] as number,
+        ndc: row[2] as string,
+        material_description: row[3] as string,
+        unit_price: row[4] as number | null,
+        source: row[5] as string | null,
+        material: row[6] as string | null,
+        billing_date: row[7] as string | null,
+        manufacturer: row[8] as string | null,
+        generic: row[9] as string | null,
+        strength: row[10] as string | null,
+        size: row[11] as string | null,
+        dose: row[12] as string | null,
+        sheet_name: row[13] as string | null,
+      }));
+    } catch (err) {
+      console.error('Get all cost items error:', err);
+      return [];
+    }
+  }, [db]);
+
   return {
     isLoading,
     isReady: !!db,
@@ -740,5 +814,8 @@ export function useDataTemplates() {
     loadScanRecords,
     getCostItemByNDC,
     getCostSheets,
+    exportDatabase,
+    importDatabase,
+    getAllCostItems,
   };
 }

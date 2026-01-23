@@ -11,10 +11,11 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, Upload, CheckCircle, AlertTriangle, Loader2, HardDrive, ChevronLeft, ArrowRight } from 'lucide-react';
+import { Download, Upload, CheckCircle, AlertTriangle, Loader2, HardDrive, ChevronLeft, ArrowRight, Database } from 'lucide-react';
 import { useOfflineTemplates, OfflineTemplate, OfflineSection, OfflineCostItem } from '@/hooks/useOfflineTemplates';
 import { useLocalFDA, FDADrug } from '@/hooks/useLocalFDA';
 import { useCloudTemplates } from '@/hooks/useCloudTemplates';
+import { useDataTemplates } from '@/hooks/useDataTemplates';
 import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -42,11 +43,13 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
   const [includeFDA, setIncludeFDA] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const templateDbInputRef = useRef<HTMLInputElement>(null);
   const hasInitializedSelection = useRef(false);
 
   const { templates, getSections, syncMeta, isReady: templatesReady } = useOfflineTemplates();
   const { templates: cloudTemplates, isLoading: cloudLoading } = useCloudTemplates();
   const { meta: fdaMeta, isReady: fdaReady, searchDrugs } = useLocalFDA();
+  const { meta: templateDbMeta, isReady: templateDbReady, exportDatabase, importDatabase } = useDataTemplates();
   
   // Pre-select currently synced templates ONLY when first opening selection mode
   useEffect(() => {
@@ -351,6 +354,154 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
     }
   };
 
+  // Export Template Database as .templatedb binary file
+  const handleExportTemplateDb = () => {
+    if (!templateDbReady || !exportDatabase) {
+      toast({
+        title: 'Database not ready',
+        description: 'Please wait for the template database to initialize',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setMode('export');
+    setIsProcessing(true);
+    setProgress(50);
+    setStatus('Exporting template database...');
+
+    try {
+      const result = exportDatabase();
+      if (!result) {
+        throw new Error('Failed to export database');
+      }
+
+      setProgress(80);
+      setStatus('Creating download file...');
+
+      // Create file with metadata header + binary data
+      const metaJson = JSON.stringify(result.meta);
+      const metaBytes = new TextEncoder().encode(metaJson);
+      const metaLengthBytes = new Uint32Array([metaBytes.length]);
+      
+      // Format: [4 bytes meta length][meta JSON][binary db data]
+      const combined = new Uint8Array(4 + metaBytes.length + result.data.length);
+      combined.set(new Uint8Array(metaLengthBytes.buffer), 0);
+      combined.set(metaBytes, 4);
+      combined.set(result.data, 4 + metaBytes.length);
+
+      const blob = new Blob([combined], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `meridian-templates-${new Date().toISOString().split('T')[0]}.templatedb`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setProgress(100);
+      setStatus('Export complete!');
+
+      toast({
+        title: 'Template database exported!',
+        description: `Exported ${result.meta.templateCount} templates`,
+      });
+
+      setTimeout(() => {
+        setMode('menu');
+        setIsProcessing(false);
+      }, 1500);
+
+    } catch (err: any) {
+      console.error('Template DB export error:', err);
+      toast({
+        title: 'Export failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+      setMode('menu');
+    }
+  };
+
+  // Import Template Database from .templatedb file
+  const handleImportTemplateDb = async (file: File) => {
+    if (!importDatabase) {
+      toast({
+        title: 'Database not ready',
+        description: 'Please wait for the template database to initialize',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setMode('import');
+    setIsProcessing(true);
+    setProgress(10);
+    setStatus('Reading template database file...');
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+
+      setProgress(30);
+      setStatus('Parsing file...');
+
+      // Parse format: [4 bytes meta length][meta JSON][binary db data]
+      const metaLengthView = new Uint32Array(data.slice(0, 4).buffer);
+      const metaLength = metaLengthView[0];
+      
+      const metaBytes = data.slice(4, 4 + metaLength);
+      const metaJson = new TextDecoder().decode(metaBytes);
+      const meta = JSON.parse(metaJson);
+
+      const dbData = data.slice(4 + metaLength);
+
+      setProgress(50);
+      setStatus(`Importing ${meta.templateCount} templates...`);
+
+      const result = await importDatabase(dbData, meta);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Import failed');
+      }
+
+      setProgress(100);
+      setStatus('Import complete!');
+
+      toast({
+        title: 'Template database imported!',
+        description: `Imported ${meta.templateCount} templates successfully`,
+      });
+
+      setTimeout(() => {
+        setMode('menu');
+        setIsProcessing(false);
+      }, 1500);
+
+    } catch (err: any) {
+      console.error('Template DB import error:', err);
+      toast({
+        title: 'Import failed',
+        description: err.message,
+        variant: 'destructive',
+      });
+      setIsProcessing(false);
+      setMode('menu');
+    }
+  };
+
+  const handleTemplateDbFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleImportTemplateDb(file);
+    }
+    if (templateDbInputRef.current) {
+      templateDbInputRef.current.value = '';
+    }
+  };
+
   const resetDialog = () => {
     setMode('menu');
     setIsProcessing(false);
@@ -359,6 +510,7 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
   };
 
   const hasData = cloudTemplates.length > 0 || (fdaMeta && fdaMeta.rowCount > 0);
+  const hasTemplateDb = templateDbReady && templateDbMeta && templateDbMeta.templateCount > 0;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
@@ -392,12 +544,57 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
                   <Badge variant="outline">{fdaMeta?.rowCount || 0}</Badge>
                   <span className="text-muted-foreground">FDA Drugs</span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{templateDbMeta?.templateCount || 0}</Badge>
+                  <span className="text-muted-foreground">Local Templates</span>
+                </div>
               </div>
               {syncMeta?.lastSyncedAt && (
                 <p className="text-xs text-muted-foreground">
                   Last synced: {new Date(syncMeta.lastSyncedAt).toLocaleDateString()}
                 </p>
               )}
+            </div>
+
+            {/* Template Database Export/Import Section */}
+            <div className="border rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Database className="h-4 w-4 text-primary" />
+                <span>Template Database (.templatedb)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Fast binary format for offline template data with cost items
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportTemplateDb}
+                  disabled={!hasTemplateDb || isProcessing}
+                  className="flex-1"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Export
+                </Button>
+                <div className="relative flex-1">
+                  <input
+                    ref={templateDbInputRef}
+                    type="file"
+                    accept=".templatedb"
+                    onChange={handleTemplateDbFileSelect}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isProcessing}
+                    className="w-full"
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    Import
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {/* Export Button - now goes to selection */}
@@ -410,7 +607,7 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
               <div className="flex items-center gap-3">
                 <Download className="h-5 w-5 text-primary" />
                 <div className="text-left">
-                  <div className="font-medium">Export to File</div>
+                  <div className="font-medium">Export Cloud Data (JSON)</div>
                   <div className="text-xs text-muted-foreground">
                     Select templates and save to flash drive
                   </div>
@@ -434,7 +631,7 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
               >
                 <Upload className="h-5 w-5 text-primary" />
                 <div className="text-left">
-                  <div className="font-medium">Import from File</div>
+                  <div className="font-medium">Import Cloud Data (JSON)</div>
                   <div className="text-xs text-muted-foreground">
                     Load data from another device
                   </div>
@@ -446,8 +643,8 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
             <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/50 p-3 text-xs">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
               <div className="text-foreground">
-                <p className="font-medium">Note about importing</p>
-                <p>For full offline functionality, use the normal Sync feature while online. Export is for backup and reference.</p>
+                <p className="font-medium">Tip</p>
+                <p>Use .templatedb format for faster offline imports. JSON is for backup/reference.</p>
               </div>
             </div>
           </div>
