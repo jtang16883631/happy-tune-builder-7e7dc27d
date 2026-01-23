@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, FileSpreadsheet, CheckCircle, XCircle, Trash2, Download, FolderOpen, RefreshCw } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
+import { applyValidationStylesToWorksheet } from '@/lib/cellValidation';
 
 interface UploadedFile {
   id: string;
@@ -206,6 +207,9 @@ export function CompileTab() {
         const sheetData = [file.headers, ...file.data];
         const ws = XLSX.utils.aoa_to_sheet(sheetData);
         
+        // Apply validation styling to cells
+        applyValidationStylesToWorksheet(ws, sheetData, 1);
+        
         // Truncate sheet name to 31 chars (Excel limit)
         const safeSheetName = file.sheetName.slice(0, 31);
         XLSX.utils.book_append_sheet(workbook, ws, safeSheetName);
@@ -232,6 +236,8 @@ export function CompileTab() {
       // Create Master sheet (all data combined)
       const masterSheetData = [masterHeaders, ...masterData];
       const masterWs = XLSX.utils.aoa_to_sheet(masterSheetData);
+      // Apply validation styling to master sheet
+      applyValidationStylesToWorksheet(masterWs, masterSheetData, 1);
 
       // Prepend Summary and Master to the workbook
       const existingSheets = [...workbook.SheetNames];

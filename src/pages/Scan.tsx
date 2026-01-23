@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Loader2, ScanBarcode, ArrowLeft, Plus, Trash2, Calendar, FileText, AlertCircle, ChevronDown, Edit2, Check, X, CloudOff, Download, GripVertical, Eye, EyeOff, Settings2, FileUp, Cloud, RefreshCw, Search, Calculator, DollarSign, ShieldCheck, BarChart3, HardDrive } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
+import { getCellValidationColor, getCellValidationClasses, applyValidationStylesToWorksheet } from '@/lib/cellValidation';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCloudTemplates, CloudTemplate, CloudSection, TemplateStatus } from '@/hooks/useCloudTemplates';
@@ -1180,6 +1181,9 @@ const Scan = () => {
         // Create worksheet
         const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
+        // Apply validation styling to cells
+        applyValidationStylesToWorksheet(worksheet, rows, 1);
+
         // Set column widths
         worksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
 
@@ -1278,6 +1282,8 @@ const Scan = () => {
       }
       
       const masterWorksheet = XLSX.utils.aoa_to_sheet(masterRows);
+      // Apply validation styling to master sheet
+      applyValidationStylesToWorksheet(masterWorksheet, masterRows, 1);
       masterWorksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
       
       // Clear all sheets and rebuild in correct order: Summary, Master, then sections
@@ -1524,6 +1530,8 @@ const Scan = () => {
         });
 
         const worksheet = XLSX.utils.aoa_to_sheet(rows);
+        // Apply validation styling to cells
+        applyValidationStylesToWorksheet(worksheet, rows, 1);
         worksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
 
         let sheetName = section.full_section || section.sect || 'Sheet';
@@ -1567,6 +1575,8 @@ const Scan = () => {
       // Create Master sheet - combine all sections
       const masterRows: any[][] = [headers, ...allMasterRows];
       const masterWorksheet = XLSX.utils.aoa_to_sheet(masterRows);
+      // Apply validation styling to master sheet
+      applyValidationStylesToWorksheet(masterWorksheet, masterRows, 1);
       masterWorksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
       
       // Clear all sheets and rebuild in correct order: Summary, Master, then sections
@@ -2383,10 +2393,10 @@ const Scan = () => {
                             
                             // Special handling for QTY - in-cell calculator (type expression like "5+3")
                             if (col.key === 'qty') {
-                              const qtyEmpty = row.qty === null || row.qty === undefined;
-                              const qtyHasNdc = !!(row.ndc || row.scannedNdc);
-                              const qtyNeedsHighlight = qtyEmpty && qtyHasNdc;
-                              const qtyBgStyle = qtyNeedsHighlight ? 'bg-yellow-200 dark:bg-yellow-900/50' : 'bg-transparent';
+                              const qtyValidationColor = getCellValidationColor('qty', row);
+                              const qtyBgStyle = qtyValidationColor 
+                                ? getCellValidationClasses(qtyValidationColor)
+                                : 'bg-transparent';
                               
                               return (
                                 <TableCell key={col.key} className="p-0" style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}>
@@ -2414,50 +2424,10 @@ const Scan = () => {
                               );
                             }
                             
-                          // Cell validation styling
-                            const isEmptyCell = value === null || value === undefined || value === '';
-                            const hasNdc = !!(row.ndc || row.scannedNdc);
-                            
-                            // QTY, MIS Divisor, MIS Count Method - yellow if empty
-                            const isRequiredField = ['qty', 'misDivisor', 'misCountMethod'].includes(col.key);
-                            const shouldHighlightRequired = isRequiredField && isEmptyCell && hasNdc;
-                            
-                            // Med Desc / Meridian Desc logic
-                            const isMedDescEmpty = !row.medDesc || row.medDesc.trim() === '';
-                            const isMeridianDescEmpty = !row.meridianDesc || row.meridianDesc.trim() === '';
-                            const bothDescEmpty = isMedDescEmpty && isMeridianDescEmpty;
-                            const isDescField = col.key === 'medDesc' || col.key === 'meridianDesc';
-                            
-                            // Red if both are empty, Yellow if only this one is empty
-                            let descCellStyle = '';
-                            if (isDescField && hasNdc) {
-                              if (bothDescEmpty) {
-                                descCellStyle = 'bg-red-500 dark:bg-red-600';
-                              } else if ((col.key === 'medDesc' && isMedDescEmpty) || (col.key === 'meridianDesc' && isMeridianDescEmpty)) {
-                                descCellStyle = 'bg-yellow-200 dark:bg-yellow-900/50';
-                              }
-                            }
-                            
-                            // Cost fields styling based on SOURCE
-                            const isCostField = ['packCost', 'unitCost', 'extended'].includes(col.key);
-                            let costCellStyle = '';
-                            if (isCostField && hasNdc) {
-                              const sourceVal = row.source || '';
-                              if (sourceVal === '') {
-                                costCellStyle = 'bg-yellow-200 dark:bg-yellow-900/50';
-                              } else if (sourceVal.toUpperCase().startsWith('MIS')) {
-                                costCellStyle = 'bg-gray-200 dark:bg-gray-700/50';
-                              }
-                            }
-                            
-                            // Highlight audit criteria when it has "need attention"
-                            const isAuditAttention = col.key === 'auditCriteria' && typeof value === 'string' && value.includes('need attention');
-                            
-                            // Combine all cell styles for input background
-                            const inputBgStyle = shouldHighlightRequired ? 'bg-yellow-200 dark:bg-yellow-900/50' 
-                              : descCellStyle ? descCellStyle 
-                              : costCellStyle ? costCellStyle 
-                              : isAuditAttention ? 'bg-orange-200 dark:bg-orange-900/50' 
+                          // Cell validation styling using utility function
+                            const cellValidationColor = getCellValidationColor(col.key, row);
+                            const inputBgStyle = cellValidationColor 
+                              ? getCellValidationClasses(cellValidationColor) 
                               : 'bg-transparent';
                             
                             return (
@@ -2489,49 +2459,16 @@ const Scan = () => {
                             );
                           }
                           
-                          // Cell validation styling (non-editable cells)
-                          const isEmptyNonEditable = value === null || value === undefined || value === '';
-                          const hasNdcNonEditable = !!(row.ndc || row.scannedNdc);
-                          
-                          // QTY, MIS Divisor, MIS Count Method - yellow if empty
-                          const isRequiredFieldNonEditable = ['qty', 'misDivisor', 'misCountMethod'].includes(col.key);
-                          const shouldHighlightRequiredNonEditable = isRequiredFieldNonEditable && isEmptyNonEditable && hasNdcNonEditable;
-                          
-                          // Med Desc / Meridian Desc logic
-                          const isMedDescEmptyNonEditable = !row.medDesc || row.medDesc.trim() === '';
-                          const isMeridianDescEmptyNonEditable = !row.meridianDesc || row.meridianDesc.trim() === '';
-                          const bothDescEmptyNonEditable = isMedDescEmptyNonEditable && isMeridianDescEmptyNonEditable;
-                          const isDescFieldNonEditable = col.key === 'medDesc' || col.key === 'meridianDesc';
-                          
-                          // Red if both are empty, Yellow if only this one is empty
-                          let descCellStyleNonEditable = '';
-                          if (isDescFieldNonEditable && hasNdcNonEditable) {
-                            if (bothDescEmptyNonEditable) {
-                              descCellStyleNonEditable = 'bg-red-500 dark:bg-red-600';
-                            } else if ((col.key === 'medDesc' && isMedDescEmptyNonEditable) || (col.key === 'meridianDesc' && isMeridianDescEmptyNonEditable)) {
-                              descCellStyleNonEditable = 'bg-yellow-200 dark:bg-yellow-900/50';
-                            }
-                          }
-                          
-                          // Cost fields styling based on SOURCE (non-editable)
-                          const isCostFieldNonEditable = ['packCost', 'unitCost', 'extended'].includes(col.key);
-                          let costCellStyleNonEditable = '';
-                          if (isCostFieldNonEditable && hasNdcNonEditable) {
-                            const sourceValNonEditable = row.source || '';
-                            if (sourceValNonEditable === '') {
-                              costCellStyleNonEditable = 'bg-yellow-200 dark:bg-yellow-900/50';
-                            } else if (sourceValNonEditable.toUpperCase().startsWith('MIS')) {
-                              costCellStyleNonEditable = 'bg-gray-200 dark:bg-gray-700/50';
-                            }
-                          }
-                          
-                          // Highlight audit criteria when it has "need attention"
-                          const isAuditAttentionCell = col.key === 'auditCriteria' && typeof value === 'string' && value.includes('need attention');
+                          // Cell validation styling (non-editable cells) using utility function
+                          const nonEditableCellColor = getCellValidationColor(col.key, row);
+                          const nonEditableCellStyle = nonEditableCellColor 
+                            ? getCellValidationClasses(nonEditableCellColor) 
+                            : '';
                           
                           return (
                             <TableCell 
                               key={col.key} 
-                              className={`text-xs ${row.source === 'not_found' && (col.key === 'medDesc' || col.key === 'source') ? 'text-destructive' : ''} ${shouldHighlightRequiredNonEditable ? 'bg-yellow-200 dark:bg-yellow-900/50' : ''} ${descCellStyleNonEditable} ${costCellStyleNonEditable} ${isAuditAttentionCell ? 'bg-orange-200 dark:bg-orange-900/50 font-medium' : ''}`}
+                              className={`text-xs ${row.source === 'not_found' && (col.key === 'medDesc' || col.key === 'source') ? 'text-destructive' : ''} ${nonEditableCellStyle}`}
                             >
                               {col.type === 'currency' 
                                 ? formatCurrency(value as number | null)
