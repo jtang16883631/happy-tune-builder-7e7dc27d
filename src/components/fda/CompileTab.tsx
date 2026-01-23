@@ -282,20 +282,51 @@ export function CompileTab() {
       const sectionsForValidation = uploadedFiles.map(f => ({ full_section: f.sheetName, sect: f.sheetName }));
       const sectionRecordsForValidation: Record<string, any[]> = {};
       
-      // Extract REC column index (for employee detection)
+      // Extract column indices for employee detection and value calculation
       const recColIndex = masterHeaders.findIndex(h => 
         h?.toString().toLowerCase() === 'rec'
       );
       const timeColIndex = masterHeaders.findIndex(h => 
         h?.toString().toLowerCase() === 'time'
       );
+      const qtyColIndex = masterHeaders.findIndex(h => 
+        h?.toString().toLowerCase() === 'qty'
+      );
+      const unitCostColIndex = masterHeaders.findIndex(h => 
+        h?.toString().toLowerCase().includes('unit') && h?.toString().toLowerCase().includes('cost')
+      );
+      const packCostColIndex = masterHeaders.findIndex(h => 
+        h?.toString().toLowerCase().includes('pack') && h?.toString().toLowerCase().includes('cost')
+      );
+      const misDivisorColIndex = masterHeaders.findIndex(h => 
+        h?.toString().toLowerCase().includes('mis') && h?.toString().toLowerCase().includes('divisor')
+      );
       
       uploadedFiles.forEach((file, idx) => {
-        sectionRecordsForValidation[idx.toString()] = file.data.map(row => ({
-          rec: recColIndex >= 0 ? row[recColIndex] : '',
-          time: timeColIndex >= 0 ? row[timeColIndex] : '',
-          extended: extendedColIndex >= 0 ? parseFloat(row[extendedColIndex]) || 0 : 0,
-        }));
+        sectionRecordsForValidation[idx.toString()] = file.data.map(row => {
+          // Try to get Extended value directly first
+          let extendedVal = extendedColIndex >= 0 ? parseFloat(row[extendedColIndex]) : NaN;
+          
+          // If Extended is not a valid number, try to calculate it
+          if (isNaN(extendedVal) || extendedVal === 0) {
+            const qty = qtyColIndex >= 0 ? parseFloat(row[qtyColIndex]) || 0 : 0;
+            // Try Unit Cost first
+            let unitCost = unitCostColIndex >= 0 ? parseFloat(row[unitCostColIndex]) : NaN;
+            // If no Unit Cost, calculate from Pack Cost / MIS Divisor
+            if (isNaN(unitCost) && packCostColIndex >= 0 && misDivisorColIndex >= 0) {
+              const packCost = parseFloat(row[packCostColIndex]) || 0;
+              const misDivisor = parseFloat(row[misDivisorColIndex]) || 1;
+              unitCost = misDivisor > 0 ? packCost / misDivisor : 0;
+            }
+            extendedVal = !isNaN(unitCost) ? qty * unitCost : 0;
+          }
+          
+          return {
+            rec: recColIndex >= 0 ? row[recColIndex] : '',
+            time: timeColIndex >= 0 ? row[timeColIndex] : '',
+            extended: extendedVal || 0,
+          };
+        });
       });
       
       const validationData = buildValidationData(sectionsForValidation, sectionRecordsForValidation, sectionSheetNames);
