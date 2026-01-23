@@ -66,8 +66,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     const initSession = async () => {
+      // If offline, skip Supabase calls and finish loading immediately
+      if (!navigator.onLine) {
+        console.log('[Auth] Offline mode - skipping auth initialization');
+        if (isMounted) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       try {
-        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        // Add timeout to prevent hanging when network is slow/unavailable
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Auth timeout')), 5000)
+        );
+        
+        const sessionPromise = supabase.auth.getSession();
+        
+        const { data: { session: existingSession } } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as Awaited<typeof sessionPromise>;
 
         if (!isMounted) return;
 
@@ -83,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error('Error initializing session:', err);
+        // On error (including timeout), just finish loading so app is usable
       } finally {
         if (isMounted) {
           setIsLoading(false);
