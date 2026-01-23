@@ -86,6 +86,12 @@ function useOAuthHandler() {
   const [isProcessing, setIsProcessing] = useState(isHandlingOAuth);
   
   useEffect(() => {
+    // If offline, don't wait for OAuth processing
+    if (!navigator.onLine) {
+      setIsProcessing(false);
+      return;
+    }
+    
     // If we started handling OAuth, wait a bit then check if we're still here
     // (we should have redirected, but just in case)
     if (isHandlingOAuth) {
