@@ -24,12 +24,14 @@ import {
   RefreshCw,
   MoreHorizontal,
   Search,
+  Upload,
 } from 'lucide-react';
 import { ScheduleBuilder } from '@/components/schedule/ScheduleBuilder';
 import { ScheduleAgendaView } from '@/components/schedule/ScheduleAgendaView';
 import { ScheduleCalendarView } from '@/components/schedule/ScheduleCalendarView';
 import { ScheduleTypeView } from '@/components/schedule/ScheduleTypeView';
 import { TeamMemberDialog } from '@/components/schedule/TeamMemberDialog';
+import { BulkImportDialog } from '@/components/schedule/BulkImportDialog';
 import {
   useScheduleEvents,
   useAllScheduleEvents,
@@ -45,6 +47,7 @@ export default function ScheduleHub() {
   const [viewTab, setViewTab] = useState<'agenda' | 'calendar' | 'type'>('agenda');
   const [builderOpen, setBuilderOpen] = useState(false);
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<ScheduleEvent | null>(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [isExporting, setIsExporting] = useState(false);
@@ -192,6 +195,10 @@ export default function ScheduleHub() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-background">
+                <DropdownMenuItem onClick={() => setBulkImportOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import from Google Doc
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTeamDialogOpen(true)}>
                   <Users className="h-4 w-4 mr-2" />
                   Manage Team
@@ -319,6 +326,12 @@ export default function ScheduleHub() {
       />
 
       <TeamMemberDialog open={teamDialogOpen} onOpenChange={setTeamDialogOpen} />
+      
+      <BulkImportDialog 
+        open={bulkImportOpen} 
+        onOpenChange={setBulkImportOpen} 
+        teamMembers={teamMembers}
+      />
     </AppLayout>
   );
 }
