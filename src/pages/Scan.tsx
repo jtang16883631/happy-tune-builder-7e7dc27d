@@ -2334,9 +2334,10 @@ const Scan = () => {
                               const qtyEmpty = row.qty === null || row.qty === undefined;
                               const qtyHasNdc = !!(row.ndc || row.scannedNdc);
                               const qtyNeedsHighlight = qtyEmpty && qtyHasNdc;
+                              const qtyBgStyle = qtyNeedsHighlight ? 'bg-yellow-200 dark:bg-yellow-900/50' : 'bg-transparent';
                               
                               return (
-                                <TableCell key={col.key} className={`p-1 ${qtyNeedsHighlight ? 'bg-yellow-200 dark:bg-yellow-900/50' : ''}`} style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}>
+                                <TableCell key={col.key} className="p-0" style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}>
                                   <div className="relative">
                                     <Input
                                       ref={getRef()}
@@ -2353,7 +2354,7 @@ const Scan = () => {
                                       }}
                                       placeholder="e.g. 5+3"
                                       disabled={!selectedSection}
-                                      className="font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      className={`font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed rounded-none pr-6 ${qtyBgStyle}`}
                                     />
                                     <Calculator className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
                                   </div>
@@ -2400,8 +2401,15 @@ const Scan = () => {
                             // Highlight audit criteria when it has "need attention"
                             const isAuditAttention = col.key === 'auditCriteria' && typeof value === 'string' && value.includes('need attention');
                             
+                            // Combine all cell styles for input background
+                            const inputBgStyle = shouldHighlightRequired ? 'bg-yellow-200 dark:bg-yellow-900/50' 
+                              : descCellStyle ? descCellStyle 
+                              : costCellStyle ? costCellStyle 
+                              : isAuditAttention ? 'bg-orange-200 dark:bg-orange-900/50' 
+                              : 'bg-transparent';
+                            
                             return (
-                              <TableCell key={col.key} className={`p-1 ${shouldHighlightRequired ? 'bg-yellow-200 dark:bg-yellow-900/50' : ''} ${descCellStyle} ${costCellStyle} ${isAuditAttention ? 'bg-orange-200 dark:bg-orange-900/50' : ''}`} style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}>
+                              <TableCell key={col.key} className="p-0" style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}>
                                 <Input
                                   ref={getRef()}
                                   value={col.type === 'currency' ? (value !== null && value !== undefined ? Number(value).toFixed(2) : '') : (value?.toString() || '')}
@@ -2423,7 +2431,7 @@ const Scan = () => {
                                   step={col.type === 'currency' ? '0.01' : undefined}
                                   placeholder={col.type === 'currency' ? '$0.00' : undefined}
                                   disabled={!selectedSection}
-                                  className="font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className={`font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed rounded-none ${inputBgStyle}`}
                                 />
                               </TableCell>
                             );
