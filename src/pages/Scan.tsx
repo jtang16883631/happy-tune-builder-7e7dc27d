@@ -2343,10 +2343,10 @@ const Scan = () => {
                       return (
                       <TableRow 
                         key={row.id}
-                        className={`${realIndex === activeRowIndex ? 'bg-primary/5' : ''} ${validationStatus === 'invalid' ? 'bg-destructive/10' : ''}`}
+                        className={realIndex === activeRowIndex ? 'bg-primary/5' : ''}
                       >
                         {/* Delete button on left */}
-                        <TableCell className={`p-1 sticky left-0 z-10 ${validationStatus === 'invalid' ? 'bg-destructive/10' : 'bg-background'}`}>
+                        <TableCell className="p-1 sticky left-0 z-10 bg-background">
                           <Button
                             variant="ghost"
                             size="icon"
