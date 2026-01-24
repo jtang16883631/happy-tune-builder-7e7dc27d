@@ -1,22 +1,34 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, FileSpreadsheet, Search, Check, X, AlertCircle, Download, Loader2, Trash2, ArrowLeft, Play, Save } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { 
+  Upload, FileSpreadsheet, Search, AlertCircle, Loader2, Trash2, ArrowLeft, Play, Save, 
+  Plus, ChevronDown, Settings2, Eye, EyeOff, Calculator, ShieldCheck
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useLocalFDA, FDADrug } from '@/hooks/useLocalFDA';
-import { useCloudTemplates, CloudTemplate, CloudSection, CloudCostItem } from '@/hooks/useCloudTemplates';
+import { useCloudTemplates, CloudTemplate, CloudSection } from '@/hooks/useCloudTemplates';
 import { useOfflineTemplates } from '@/hooks/useOfflineTemplates';
 import { useOnlineStatus } from '@/components/OfflineRedirect';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { getCellValidationColor, getCellValidationClasses } from '@/lib/cellValidation';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import * as XLSX from 'xlsx';
 
 // Same row structure as Scan page
@@ -66,7 +78,7 @@ const Automation = () => {
   // Use cloud or offline templates based on connectivity
   const cloudTemplates = useCloudTemplates();
   const offlineTemplates = useOfflineTemplates();
-  const { templates, getCostItemByNDC } = isOnline ? cloudTemplates : offlineTemplates as any;
+  const { templates, getCostItemByNDC, getSections } = isOnline ? cloudTemplates : offlineTemplates as any;
   
   // User short name for REC
   const [userShortName, setUserShortName] = useState('');
@@ -127,10 +139,34 @@ const Automation = () => {
   const [selectedTemplate, setSelectedTemplate] = useState<CloudTemplate | null>(null);
   const [selectedSection, setSelectedSection] = useState<CloudSection | null>(null);
   const [sections, setSections] = useState<CloudSection[]>([]);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [activeRowIndex, setActiveRowIndex] = useState(0);
   const [activeColKey, setActiveColKey] = useState<string | null>(null);
   const [step, setStep] = useState<'select' | 'import' | 'edit'>('select');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [auditMode, setAuditMode] = useState(false);
+  
+  // Column visibility state
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set([
+    'device', 'trade', 'generic', 'strength', 'sizeTxt', 'doseForm', 
+    'genericCode', 'deaClass', 'ahfs'
+  ]));
+  
+  // Column widths
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const resizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  
+  // QTY expressions for calculator
+  const [qtyExpressions, setQtyExpressions] = useState<Record<string, string>>({});
+  
+  // Cell refs for navigation
+  const cellInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
+  
+  // Multi-cell selection state
+  const [selectionStart, setSelectionStart] = useState<{ row: number; col: string } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{ row: number; col: string } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
 
   // Create empty row
   const createEmptyRow = useCallback((sectionName?: string): ScanRow => ({
@@ -179,28 +215,25 @@ const Automation = () => {
 
   // Load sections when template is selected
   const loadSections = useCallback(async (templateId: string) => {
-    if (!isOnline) {
-      const offlineSections = localStorage.getItem(`template_sections_${templateId}`);
-      if (offlineSections) {
-        setSections(JSON.parse(offlineSections));
-      }
-      return;
-    }
-    
+    setSectionsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('template_sections')
-        .select('*')
-        .eq('template_id', templateId)
-        .order('sect');
+      if (!isOnline) {
+        const offlineSections = localStorage.getItem(`template_sections_${templateId}`);
+        if (offlineSections) {
+          setSections(JSON.parse(offlineSections));
+        }
+        return;
+      }
       
-      if (error) throw error;
-      setSections((data || []) as CloudSection[]);
+      const data = await getSections(templateId);
+      setSections(data || []);
     } catch (err) {
       console.error('Error loading sections:', err);
       setSections([]);
+    } finally {
+      setSectionsLoading(false);
     }
-  }, [isOnline]);
+  }, [isOnline, getSections]);
 
   // Handle template selection
   const handleTemplateSelect = useCallback(async (templateId: string) => {
@@ -296,7 +329,7 @@ const Automation = () => {
     event.target.value = '';
   }, [selectedTemplate, selectedSection, createEmptyRow, generateRecForRow]);
 
-  // Process all NDCs through FDA + Cost lookup (same logic as Scan page)
+  // Process all NDCs through FDA + Cost lookup
   const handleProcessAll = useCallback(async () => {
     if (!fdaReady) {
       toast.error('FDA database not ready. Please import data in Master Data first.');
@@ -323,7 +356,7 @@ const Automation = () => {
       }
       
       try {
-        // Try to find outer NDC using NDC9 lookup (same as Scan page)
+        // Try to find outer NDC using NDC9 lookup
         const ndc9 = scannedNdc.substring(0, 9);
         const { outerNDCs, drugs } = findOuterNDCsByNDC9(ndc9);
         
@@ -331,15 +364,12 @@ const Automation = () => {
         let fdaResult: FDADrug | null = null;
         
         if (outerNDCs.length === 1) {
-          // Single match - use it
           finalNdc = outerNDCs[0];
           fdaResult = getDrugByOuterNDC(finalNdc);
         } else if (outerNDCs.length > 1) {
-          // Multiple matches - try to find best match or use first
           fdaResult = getDrugByOuterNDC(outerNDCs[0]);
           finalNdc = outerNDCs[0];
         } else {
-          // No outer NDC found, try direct lookup
           fdaResult = fdaLookup(scannedNdc);
         }
         
@@ -350,7 +380,7 @@ const Automation = () => {
           selectedSection?.cost_sheet ?? null
         );
         
-        // Populate row with lookup data (same mapping as Scan page)
+        // Populate row with lookup data
         const misCountMethod = fdaResult?.count_method || '';
         const itemNumber = costItem?.material || '';
         const medDesc = costItem?.material_description || '';
@@ -431,8 +461,8 @@ const Automation = () => {
     toast.success(`Processing complete: ${found} found, ${notFound} not found`);
   }, [rows, fdaLookup, findOuterNDCsByNDC9, getDrugByOuterNDC, getCostItemByNDC, selectedTemplate, selectedSection, fdaReady]);
 
-  // Handle cell edit
-  const handleCellChange = useCallback((rowIndex: number, key: keyof ScanRow, value: string | number | null) => {
+  // Handle field change with auto-recalculation
+  const handleFieldChange = useCallback((key: keyof ScanRow, value: any, rowIndex: number) => {
     setRows(prev => {
       const updated = [...prev];
       updated[rowIndex] = { ...updated[rowIndex], [key]: value };
@@ -457,7 +487,79 @@ const Automation = () => {
     });
   }, []);
 
-  // Save to localStorage (same format as Scan page)
+  // QTY expression evaluation
+  const evaluateQtyExpression = (expression: string): number | null => {
+    if (!expression.trim()) return null;
+    try {
+      // Only allow numbers, +, -, *, /, (, ), spaces
+      if (!/^[\d\s+\-*/().]+$/.test(expression)) return null;
+      const result = Function('"use strict"; return (' + expression + ')')();
+      if (typeof result === 'number' && !Number.isNaN(result) && Number.isFinite(result)) {
+        return Math.round(result * 100) / 100;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getQtyDisplayValue = (row: ScanRow, rowIndex: number) => {
+    const expression = qtyExpressions[row.id];
+    if (expression !== undefined) return expression;
+    return row.qty !== null ? row.qty.toString() : '';
+  };
+
+  const handleQtyInputChange = (value: string, rowIndex: number) => {
+    const row = rows[rowIndex];
+    setQtyExpressions(prev => ({ ...prev, [row.id]: value }));
+  };
+
+  const handleQtyBlur = (rowIndex: number) => {
+    const row = rows[rowIndex];
+    const expression = qtyExpressions[row.id];
+    if (expression !== undefined) {
+      const result = evaluateQtyExpression(expression);
+      if (result !== null) {
+        handleFieldChange('qty', result, rowIndex);
+      }
+      setQtyExpressions(prev => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+    }
+  };
+
+  const handleQtyExpressionKeyDown = (e: React.KeyboardEvent, rowIndex: number) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleQtyBlur(rowIndex);
+    }
+  };
+
+  // Add row
+  const handleAddRow = useCallback(() => {
+    const sectionName = selectedSection?.full_section || '';
+    const newRow = createEmptyRow(sectionName);
+    newRow.rec = generateRecForRow(rows.length);
+    newRow.time = new Date().toLocaleTimeString();
+    setRows(prev => [...prev, newRow]);
+    setActiveRowIndex(rows.length);
+  }, [selectedSection, createEmptyRow, generateRecForRow, rows.length]);
+
+  // Delete row
+  const handleDeleteRow = useCallback((rowIndex: number) => {
+    if (rows.length <= 1) {
+      toast.error('Cannot delete the last row');
+      return;
+    }
+    setRows(prev => prev.filter((_, idx) => idx !== rowIndex));
+    if (activeRowIndex >= rowIndex && activeRowIndex > 0) {
+      setActiveRowIndex(prev => prev - 1);
+    }
+  }, [rows.length, activeRowIndex]);
+
+  // Save to localStorage
   const handleSave = useCallback(() => {
     if (!selectedTemplate || !selectedSection) {
       toast.error('No template or section selected');
@@ -484,311 +586,645 @@ const Automation = () => {
     toast.success(`Saved ${rows.length} records to ${selectedSection.full_section || selectedSection.sect}`);
   }, [selectedTemplate, selectedSection, rows]);
 
-  // Export to Excel
-  const handleExport = useCallback(() => {
-    if (rows.length === 0) {
-      toast.error('No data to export');
-      return;
-    }
+  // Filter rows by search
+  const filteredRows = useMemo(() => {
+    if (!searchQuery.trim()) return rows;
+    const q = searchQuery.toLowerCase();
+    return rows.filter(row =>
+      row.ndc?.toLowerCase().includes(q) ||
+      row.scannedNdc?.toLowerCase().includes(q) ||
+      row.medDesc?.toLowerCase().includes(q) ||
+      row.meridianDesc?.toLowerCase().includes(q) ||
+      row.rec?.toLowerCase().includes(q)
+    );
+  }, [rows, searchQuery]);
 
-    const exportData = rows.map(row => ({
-      'LOC': row.loc,
-      'REC': row.rec,
-      'TIME': row.time,
-      'NDC': row.ndc || row.scannedNdc,
-      'Scanned NDC': row.scannedNdc,
-      'QTY': row.qty,
-      'MIS Divisor': row.misDivisor,
-      'MIS Count Method': row.misCountMethod,
-      'Item Number': row.itemNumber,
-      'Med Desc': row.medDesc,
-      'Meridian Desc': row.meridianDesc,
-      'Trade': row.trade,
-      'Generic': row.generic,
-      'Strength': row.strength,
-      'Pack Sz': row.packSz,
-      'FDA Size': row.fdaSize,
-      'Dose Form': row.doseForm,
-      'Manufacturer': row.manufacturer,
-      'Source': row.source,
-      'Pack Cost': row.packCost,
-      'Unit Cost': row.unitCost,
-      'Extended': row.extended,
-    }));
+  // Calculate section total
+  const sectionExtendedTotal = useMemo(() => {
+    return rows.reduce((sum, row) => {
+      if (!row.ndc && !row.scannedNdc) return sum;
+      if (typeof row.extended !== 'number' || Number.isNaN(row.extended)) return sum;
+      return sum + row.extended;
+    }, 0);
+  }, [rows]);
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Automation Results');
-    
-    const exportFileName = `automation_${selectedTemplate?.name || 'export'}_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(workbook, exportFileName);
-    toast.success('Exported to Excel');
-  }, [rows, selectedTemplate]);
+  const sectionTotalLabel = useMemo(() => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sectionExtendedTotal);
+  }, [sectionExtendedTotal]);
 
-  // Clear and start over
-  const handleClear = useCallback(() => {
-    setRows([]);
-    setFileName(null);
-    setProcessProgress(0);
-    setStep('select');
-  }, []);
-
-  // Stats
-  const stats = {
-    total: rows.length,
-    found: rows.filter(r => r.source).length,
-    notFound: rows.filter(r => !r.source && r.scannedNdc).length,
-    totalExtended: rows.reduce((sum, r) => sum + (r.extended || 0), 0),
+  // Column definitions - same as Scan page
+  const defaultWidths: Record<string, number> = {
+    loc: 80, device: 96, rec: 100, time: 96, ndc: 128, scannedNdc: 144,
+    qty: 80, misDivisor: 96, misCountMethod: 128, itemNumber: 112,
+    medDesc: 192, meridianDesc: 192, trade: 128, generic: 144, strength: 112,
+    packSz: 96, fdaSize: 96, sizeTxt: 96, doseForm: 112, manufacturer: 144,
+    genericCode: 128, deaClass: 112, ahfs: 112, source: 96,
+    packCost: 112, unitCost: 112, extended: 112, blank: 80,
+    sheetType: 112, auditCriteria: 128, originalQty: 112, auditorInitials: 128,
+    results: 112, additionalNotes: 192
   };
 
-  // Editable columns (same as Scan page)
-  const editableColumns: { key: keyof ScanRow; label: string; width: string; type: 'text' | 'number' }[] = [
-    { key: 'scannedNdc', label: 'Scanned NDC', width: 'w-32', type: 'text' },
-    { key: 'ndc', label: 'Outer NDC', width: 'w-32', type: 'text' },
-    { key: 'qty', label: 'QTY', width: 'w-20', type: 'number' },
-    { key: 'misDivisor', label: 'MIS Div', width: 'w-20', type: 'number' },
-    { key: 'itemNumber', label: 'Item #', width: 'w-24', type: 'text' },
-    { key: 'medDesc', label: 'Med Desc', width: 'w-48', type: 'text' },
-    { key: 'meridianDesc', label: 'Meridian Desc', width: 'w-48', type: 'text' },
-    { key: 'manufacturer', label: 'Manufacturer', width: 'w-32', type: 'text' },
-    { key: 'source', label: 'Source', width: 'w-24', type: 'text' },
-    { key: 'packCost', label: 'Pack Cost', width: 'w-24', type: 'number' },
-    { key: 'unitCost', label: 'Unit Cost', width: 'w-24', type: 'number' },
-    { key: 'extended', label: 'Extended', width: 'w-24', type: 'number' },
-  ];
+  const columns = useMemo(() => [
+    { key: 'loc', label: 'LOC', editable: true },
+    { key: 'device', label: 'Device', editable: true, hideable: true },
+    { key: 'rec', label: 'REC', editable: true },
+    { key: 'time', label: 'TIME', editable: true },
+    { key: 'ndc', label: 'NDC', editable: true },
+    { key: 'scannedNdc', label: 'Scanned NDC', editable: true },
+    { key: 'qty', label: 'QTY', editable: true, type: 'number' },
+    { key: 'misDivisor', label: 'MIS Divisor', editable: true, type: 'number' },
+    { key: 'misCountMethod', label: 'MIS Count Method', editable: true },
+    { key: 'itemNumber', label: 'Item Number', editable: true },
+    { key: 'medDesc', label: 'Med Desc', editable: true },
+    { key: 'meridianDesc', label: 'MERIDIAN DESC', editable: true },
+    { key: 'trade', label: 'TRADE', editable: true, hideable: true },
+    { key: 'generic', label: 'GENERIC', editable: true, hideable: true },
+    { key: 'strength', label: 'STRENGTH', editable: true, hideable: true },
+    { key: 'packSz', label: 'PACK SZ', editable: true },
+    { key: 'fdaSize', label: 'FDA SIZE', editable: true },
+    { key: 'sizeTxt', label: 'SIZE TXT', editable: true, hideable: true },
+    { key: 'doseForm', label: 'DOSE FORM', editable: true, hideable: true },
+    { key: 'manufacturer', label: 'MANUFACTURER', editable: true },
+    { key: 'genericCode', label: 'GENERIC CODE', editable: true, hideable: true },
+    { key: 'deaClass', label: 'DEA CLASS', editable: true, hideable: true },
+    { key: 'ahfs', label: 'AHFS', editable: true, hideable: true },
+    { key: 'source', label: 'SOURCE', editable: true },
+    { key: 'packCost', label: 'Pack Cost', editable: true, type: 'currency' },
+    { key: 'unitCost', label: 'Unit Cost', editable: true, type: 'currency' },
+    { key: 'extended', label: 'Extended', editable: true, type: 'currency' },
+    { key: 'blank', label: sectionTotalLabel, editable: true },
+    { key: 'sheetType', label: 'Sheet Type', editable: true },
+    { key: 'auditCriteria', label: 'Audit Criteria', editable: true },
+    { key: 'originalQty', label: 'Original QTY', editable: true, type: 'number' },
+    { key: 'auditorInitials', label: 'Auditor Initials', editable: true },
+    { key: 'results', label: 'Results', editable: true },
+    { key: 'additionalNotes', label: 'Additional Notes', editable: true },
+  ], [sectionTotalLabel]);
 
-  return (
-    <AppLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            {step !== 'select' && (
-              <Button variant="ghost" size="icon" onClick={handleClear}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            )}
-            <div>
-              <h1 className="text-2xl font-bold">Automation</h1>
-              <p className="text-muted-foreground">
-                {step === 'select' && 'Select a template and section to import NDCs'}
-                {step === 'import' && `${rows.length} NDCs loaded - ready to process`}
-                {step === 'edit' && `Editing ${rows.length} records`}
-              </p>
-            </div>
+  const getColumnWidth = (key: string) => columnWidths[key] || defaultWidths[key] || 100;
+  const visibleColumns = useMemo(() => columns.filter(col => !hiddenColumns.has(col.key)), [columns, hiddenColumns]);
+  const hideableColumns = useMemo(() => columns.filter(col => col.hideable), [columns]);
+
+  const toggleColumnVisibility = (key: string) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  // Handle column resize
+  const handleResizeStart = (e: React.MouseEvent, key: string) => {
+    e.preventDefault();
+    const startWidth = getColumnWidth(key);
+    resizingRef.current = { key, startX: e.clientX, startWidth };
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const diff = moveEvent.clientX - resizingRef.current.startX;
+      const newWidth = Math.max(50, resizingRef.current.startWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [resizingRef.current!.key]: newWidth }));
+    };
+    
+    const handleMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // Cell selection helpers
+  const isCellSelected = useCallback((rowIndex: number, colKey: string): boolean => {
+    if (!selectionStart || !selectionEnd) return false;
+    const colKeys = visibleColumns.map(c => c.key);
+    const colIdx = colKeys.indexOf(colKey);
+    const startColIdx = colKeys.indexOf(selectionStart.col);
+    const endColIdx = colKeys.indexOf(selectionEnd.col);
+    const minRow = Math.min(selectionStart.row, selectionEnd.row);
+    const maxRow = Math.max(selectionStart.row, selectionEnd.row);
+    const minCol = Math.min(startColIdx, endColIdx);
+    const maxCol = Math.max(startColIdx, endColIdx);
+    return rowIndex >= minRow && rowIndex <= maxRow && colIdx >= minCol && colIdx <= maxCol;
+  }, [selectionStart, selectionEnd, visibleColumns]);
+
+  const handleCellMouseDown = useCallback((e: React.MouseEvent, rowIndex: number, colKey: string) => {
+    if (e.shiftKey && selectionStart) {
+      setSelectionEnd({ row: rowIndex, col: colKey });
+    } else {
+      setSelectionStart({ row: rowIndex, col: colKey });
+      setSelectionEnd({ row: rowIndex, col: colKey });
+      setIsSelecting(true);
+    }
+    setActiveRowIndex(rowIndex);
+    setActiveColKey(colKey);
+  }, [selectionStart]);
+
+  const handleCellMouseEnter = useCallback((rowIndex: number, colKey: string) => {
+    if (isSelecting) {
+      setSelectionEnd({ row: rowIndex, col: colKey });
+    }
+  }, [isSelecting]);
+
+  useEffect(() => {
+    const handleMouseUp = () => setIsSelecting(false);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  const formatCurrency = (value: number | null) => {
+    if (value === null) return '';
+    return `$${value.toFixed(2)}`;
+  };
+
+  // Keyboard navigation
+  const getVisibleColKeys = useCallback(() => visibleColumns.map(c => c.key), [visibleColumns]);
+  
+  const getNextEditableColKey = (colKeys: string[], currentIdx: number, direction: 1 | -1): string | null => {
+    let idx = currentIdx + direction;
+    while (idx >= 0 && idx < colKeys.length) {
+      const col = columns.find(c => c.key === colKeys[idx]);
+      if (col?.editable) return colKeys[idx];
+      idx += direction;
+    }
+    return null;
+  };
+
+  const handleCellKeyDown = useCallback((e: React.KeyboardEvent, rowIndex: number, colKey: string) => {
+    const colKeys = getVisibleColKeys();
+    const currentColIdx = colKeys.indexOf(colKey);
+    const isShift = e.shiftKey;
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const newRowIndex = Math.max(0, rowIndex - 1);
+      if (!isShift) {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setActiveRowIndex(newRowIndex);
+        setTimeout(() => {
+          cellInputRefs.current.get(`${newRowIndex}-${colKey}`)?.focus();
+        }, 0);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const newRowIndex = Math.min(rows.length - 1, rowIndex + 1);
+      if (!isShift) {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setActiveRowIndex(newRowIndex);
+        setTimeout(() => {
+          cellInputRefs.current.get(`${newRowIndex}-${colKey}`)?.focus();
+        }, 0);
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const newColKey = getNextEditableColKey(colKeys, currentColIdx, -1) ?? colKey;
+      if (!isShift) {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setActiveColKey(newColKey);
+        setTimeout(() => {
+          cellInputRefs.current.get(`${rowIndex}-${newColKey}`)?.focus();
+        }, 0);
+      }
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const newColKey = getNextEditableColKey(colKeys, currentColIdx, 1) ?? colKey;
+      if (!isShift) {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setActiveColKey(newColKey);
+        setTimeout(() => {
+          cellInputRefs.current.get(`${rowIndex}-${newColKey}`)?.focus();
+        }, 0);
+      }
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const direction = e.shiftKey ? -1 : 1;
+      let newRowIndex = rowIndex;
+      let newColKey = getNextEditableColKey(colKeys, currentColIdx, direction as -1 | 1);
+      
+      if (!newColKey) {
+        newRowIndex = direction === 1
+          ? Math.min(rows.length - 1, rowIndex + 1)
+          : Math.max(0, rowIndex - 1);
+        const wrapStartIdx = direction === 1 ? -1 : colKeys.length;
+        newColKey = getNextEditableColKey(colKeys, wrapStartIdx, direction as -1 | 1) ?? colKey;
+      }
+
+      setSelectionStart(null);
+      setSelectionEnd(null);
+      setActiveRowIndex(newRowIndex);
+      setActiveColKey(newColKey);
+      setTimeout(() => {
+        cellInputRefs.current.get(`${newRowIndex}-${newColKey}`)?.focus();
+      }, 0);
+    }
+  }, [getVisibleColKeys, rows.length, columns]);
+
+  // Template selection view
+  if (step === 'select') {
+    return (
+      <AppLayout>
+        <div className="space-y-6" style={{ fontFamily: 'Arial, sans-serif' }}>
+          <div>
+            <h1 className="text-2xl font-bold">Automation - Bulk Import</h1>
+            <p className="text-muted-foreground">Import NDC and QTY lists from Excel files</p>
           </div>
-          
-          {step === 'edit' && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={handleExport} className="gap-2">
-                <Download className="h-4 w-4" />
-                Export
-              </Button>
-              <Button onClick={handleSave} className="gap-2">
-                <Save className="h-4 w-4" />
-                Save to Template
-              </Button>
-            </div>
-          )}
-        </div>
 
-        {/* Step 1: Template & Section Selection */}
-        {step === 'select' && (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">1. Select Template</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Select
-                  value={selectedTemplate?.id || ''}
-                  onValueChange={handleTemplateSelect}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a template..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template: CloudTemplate) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
+          {/* Template Selection */}
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Select Template</Label>
+                  <Select onValueChange={handleTemplateSelect} value={selectedTemplate?.id || ''}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t: CloudTemplate) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name} {t.facility_name && `- ${t.facility_name}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">2. Select Section</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Select
-                  value={selectedSection?.id || ''}
-                  onValueChange={handleSectionChange}
-                  disabled={!selectedTemplate}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={selectedTemplate ? "Choose a section..." : "Select template first"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sections.map(section => (
-                      <SelectItem key={section.id} value={section.id}>
-                        {section.full_section || section.sect}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
+                <div className="space-y-2">
+                  <Label>Select Section</Label>
+                  <Select 
+                    onValueChange={handleSectionChange} 
+                    value={selectedSection?.id || ''}
+                    disabled={!selectedTemplate || sectionsLoading}
+                  >
+                    <SelectTrigger>
+                      {sectionsLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <SelectValue placeholder="Choose a section..." />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sections.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.full_section || s.sect}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5" />
-                  3. Import Excel
-                </CardTitle>
-                <CardDescription>
-                  Upload Excel with NDC and QTY columns
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button 
-                  asChild 
-                  variant="outline" 
-                  className="w-full"
-                  disabled={!selectedTemplate || !selectedSection}
-                >
-                  <label className="cursor-pointer">
-                    <Upload className="mr-2 h-4 w-4" />
-                    Choose File
+              {/* File Upload */}
+              <div className="pt-4 border-t">
+                <Label className="block mb-2">Upload Excel File</Label>
+                <div className="flex items-center gap-4">
+                  <label className="flex-1">
                     <input
                       type="file"
-                      accept=".xlsx,.xls"
+                      accept=".xlsx,.xls,.csv"
                       onChange={handleFileUpload}
                       className="hidden"
                       disabled={!selectedTemplate || !selectedSection}
                     />
+                    <div className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                      selectedTemplate && selectedSection 
+                        ? 'hover:border-primary hover:bg-primary/5' 
+                        : 'opacity-50 cursor-not-allowed'
+                    }`}>
+                      <Upload className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
+                      <p className="font-medium">Click to upload Excel file</p>
+                      <p className="text-sm text-muted-foreground">File must contain NDC and QTY columns</p>
+                    </div>
                   </label>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Step 2: Processing */}
-        {step === 'import' && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center gap-4">
-                <div className="text-center">
-                  <h3 className="font-semibold text-lg">Ready to Process</h3>
-                  <p className="text-muted-foreground">
-                    {rows.length} NDCs loaded from {fileName}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Template: {selectedTemplate?.name} → Section: {selectedSection?.full_section || selectedSection?.sect}
-                  </p>
                 </div>
-                
-                {isProcessing ? (
-                  <div className="w-full max-w-md space-y-2">
-                    <Progress value={processProgress} className="h-3" />
-                    <p className="text-center text-sm text-muted-foreground">
-                      Processing... {processProgress}%
-                    </p>
-                  </div>
-                ) : (
-                  <Button onClick={handleProcessAll} size="lg" className="gap-2">
-                    <Play className="h-5 w-5" />
-                    Lookup All NDCs
-                  </Button>
-                )}
               </div>
+
+              {!selectedTemplate && (
+                <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Please select a template and section before uploading</span>
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
+        </div>
+      </AppLayout>
+    );
+  }
 
-        {/* Step 3: Editable Table (like Scan page) */}
-        {step === 'edit' && (
-          <>
-            {/* Stats Bar */}
-            <div className="flex items-center gap-3 text-sm">
-              <Badge variant="secondary">{stats.total} total</Badge>
-              <Badge className="bg-primary text-primary-foreground">{stats.found} found</Badge>
-              <Badge variant="destructive">{stats.notFound} not found</Badge>
-              <Badge variant="secondary" className="font-mono ml-auto">
-                Total: ${stats.totalExtended.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Badge>
+  // Import preview / processing view
+  if (step === 'import') {
+    return (
+      <AppLayout>
+        <div className="space-y-4" style={{ fontFamily: 'Arial, sans-serif' }}>
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => { setStep('select'); setRows([]); setFileName(null); }}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold">Process Import</h1>
+              <p className="text-muted-foreground">
+                {fileName} • {rows.length} items • {selectedTemplate?.name} → {selectedSection?.full_section}
+              </p>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              {isProcessing ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Processing NDCs... {processProgress}%</span>
+                  </div>
+                  <Progress value={processProgress} />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">{rows.length} NDCs ready to process</p>
+                      <p className="text-sm text-muted-foreground">Click Process to lookup FDA and cost data</p>
+                    </div>
+                    <Button onClick={handleProcessAll} disabled={!fdaReady}>
+                      <Play className="h-4 w-4 mr-2" />
+                      Process All
+                    </Button>
+                  </div>
+                  {!fdaReady && (
+                    <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>FDA database not ready. Please import data in Master Data first.</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // Edit view - same as Scan page
+  return (
+    <AppLayout fullWidth defaultCollapsed>
+      <div className="space-y-4 w-full" style={{ fontFamily: 'Arial, sans-serif' }}>
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => { setStep('select'); setRows([]); setFileName(null); }}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {selectedTemplate?.name} - Automation Import
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {selectedSection?.full_section} • {rows.length} items from {fileName}
+            </p>
+          </div>
+        </div>
+
+        {/* Table Card */}
+        <Card className="w-full">
+          <CardContent className="p-4">
+            {/* Toolbar */}
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search NDC, Med Desc, REC..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8 h-8 w-64 text-sm"
+                />
+              </div>
+
+              <Button variant="outline" size="sm" onClick={handleAddRow}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add Row
+              </Button>
+
+              <Button variant="default" size="sm" onClick={handleSave}>
+                <Save className="h-4 w-4 mr-1" />
+                Save to Template
+              </Button>
+
+              {/* Audit Mode Toggle */}
+              <div className="flex items-center gap-2 ml-2 border-l pl-3">
+                <Switch id="audit-mode" checked={auditMode} onCheckedChange={setAuditMode} />
+                <Label htmlFor="audit-mode" className="text-sm font-medium flex items-center gap-1 cursor-pointer">
+                  <ShieldCheck className="h-4 w-4" />
+                  Audit Mode
+                </Label>
+              </div>
+
+              {/* Column visibility */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                    Toggle Hidden Columns
+                  </div>
+                  <DropdownMenuSeparator />
+                  {hideableColumns.map(col => (
+                    <DropdownMenuItem
+                      key={col.key}
+                      onClick={() => toggleColumnVisibility(col.key)}
+                      className="flex items-center justify-between"
+                    >
+                      <span>{col.label}</span>
+                      {hiddenColumns.has(col.key) ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
-            {/* Editable Table */}
-            <Card>
-              <CardContent className="p-0">
-                <ScrollArea className="h-[600px]">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background z-10">
-                      <TableRow>
-                        <TableHead className="w-12">#</TableHead>
-                        {editableColumns.map(col => (
-                          <TableHead key={col.key} className={col.width}>
-                            {col.label}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {rows.map((row, rowIndex) => (
-                        <TableRow 
-                          key={row.id}
-                          className={!row.source ? 'bg-destructive/10' : ''}
+            {/* Table */}
+            <ScrollArea className="w-full whitespace-nowrap rounded-lg border">
+              <div className="min-w-max" style={{ fontFamily: 'Arial, sans-serif' }}>
+                <Table style={{ fontFamily: 'Arial, sans-serif' }}>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="w-10 sticky left-0 bg-muted/50 z-10"></TableHead>
+                      {visibleColumns.map((col) => (
+                        <TableHead 
+                          key={col.key} 
+                          className="text-xs font-medium relative group select-none"
+                          style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}
                         >
-                          <TableCell className="text-muted-foreground font-mono text-xs">
-                            {rowIndex + 1}
-                          </TableCell>
-                          {editableColumns.map(col => (
-                            <TableCell key={col.key} className="p-0">
-                              <Input
-                                value={row[col.key]?.toString() || ''}
-                                onChange={(e) => {
-                                  const value = col.type === 'number' 
-                                    ? (e.target.value ? parseFloat(e.target.value) : null)
-                                    : e.target.value;
-                                  handleCellChange(rowIndex, col.key, value);
-                                }}
-                                type={col.type === 'number' ? 'number' : 'text'}
-                                className="border-0 rounded-none h-8 text-xs focus:ring-1 focus:ring-inset"
-                                onFocus={() => {
-                                  setActiveRowIndex(rowIndex);
-                                  setActiveColKey(col.key);
-                                }}
-                              />
-                            </TableCell>
-                          ))}
-                        </TableRow>
+                          <div className="flex items-center justify-between pr-2">
+                            <span className="truncate">{col.label}</span>
+                          </div>
+                          <div
+                            className="absolute right-0 top-0 h-full w-2 cursor-col-resize opacity-0 group-hover:opacity-100 hover:bg-primary/20"
+                            onMouseDown={(e) => handleResizeStart(e, col.key)}
+                          />
+                        </TableHead>
                       ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </>
-        )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRows.map((row) => {
+                      const realIndex = rows.findIndex(r => r.id === row.id);
+                      return (
+                        <TableRow key={row.id} className={realIndex === activeRowIndex ? 'bg-primary/5' : ''}>
+                          <TableCell className="p-1 sticky left-0 z-10 bg-background">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteRow(realIndex)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                          {visibleColumns.map((col) => {
+                            let value = row[col.key as keyof ScanRow];
+                            
+                            // Compute audit criteria dynamically
+                            if (col.key === 'auditCriteria' && auditMode && (row.ndc || row.scannedNdc)) {
+                              const needsAttention: string[] = [];
+                              if (row.qty !== null && row.qty > 2000) {
+                                needsAttention.push('QTY > 2000');
+                              }
+                              if (row.extended !== null && row.extended > 3000) {
+                                needsAttention.push('Extended > $3000');
+                              }
+                              if (needsAttention.length > 0) {
+                                value = 'need attention: ' + needsAttention.join(', ');
+                              }
+                            }
 
-        {/* Empty State */}
-        {step === 'select' && !selectedTemplate && (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <FileSpreadsheet className="h-6 w-6 text-muted-foreground" />
+                            const isSelected = isCellSelected(realIndex, col.key);
+                            const cellValidationColor = getCellValidationColor(col.key, row);
+                            const inputBgStyle = cellValidationColor ? getCellValidationClasses(cellValidationColor) : 'bg-transparent';
+                            const selectionStyle = isSelected ? 'ring-2 ring-primary ring-inset' : '';
+
+                            // QTY field with calculator
+                            if (col.key === 'qty') {
+                              return (
+                                <TableCell 
+                                  key={col.key} 
+                                  className="p-0" 
+                                  style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}
+                                  onMouseDown={(e) => handleCellMouseDown(e, realIndex, col.key)}
+                                  onMouseEnter={() => handleCellMouseEnter(realIndex, col.key)}
+                                >
+                                  <div className="relative">
+                                    <Input
+                                      ref={(el) => { if (el) cellInputRefs.current.set(`${realIndex}-${col.key}`, el); }}
+                                      value={getQtyDisplayValue(row, realIndex)}
+                                      onChange={(e) => handleQtyInputChange(e.target.value, realIndex)}
+                                      onBlur={() => handleQtyBlur(realIndex)}
+                                      onKeyDown={(e) => {
+                                        handleQtyExpressionKeyDown(e, realIndex);
+                                        if (e.key !== 'Enter') handleCellKeyDown(e, realIndex, col.key);
+                                      }}
+                                      onFocus={() => {
+                                        setActiveRowIndex(realIndex);
+                                        setActiveColKey(col.key);
+                                        if (qtyExpressions[row.id] === undefined && row.qty !== null) {
+                                          setQtyExpressions(prev => ({ ...prev, [row.id]: row.qty!.toString() }));
+                                        }
+                                      }}
+                                      placeholder="e.g. 5+3"
+                                      className={`font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0 rounded-none pr-6 ${inputBgStyle} ${selectionStyle}`}
+                                    />
+                                    <Calculator className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                                  </div>
+                                </TableCell>
+                              );
+                            }
+
+                            if (col.editable) {
+                              return (
+                                <TableCell 
+                                  key={col.key} 
+                                  className="p-0" 
+                                  style={{ width: getColumnWidth(col.key), minWidth: getColumnWidth(col.key) }}
+                                  onMouseDown={(e) => handleCellMouseDown(e, realIndex, col.key)}
+                                  onMouseEnter={() => handleCellMouseEnter(realIndex, col.key)}
+                                >
+                                  <Input
+                                    ref={(el) => { if (el) cellInputRefs.current.set(`${realIndex}-${col.key}`, el); }}
+                                    value={col.type === 'currency' ? (value !== null && value !== undefined ? Number(value).toFixed(2) : '') : (value?.toString() || '')}
+                                    onChange={(e) => {
+                                      const newValue = col.type === 'number' || col.type === 'currency'
+                                        ? (e.target.value ? parseFloat(e.target.value) : null)
+                                        : e.target.value;
+                                      handleFieldChange(col.key as keyof ScanRow, newValue, realIndex);
+                                    }}
+                                    onKeyDown={(e) => handleCellKeyDown(e, realIndex, col.key)}
+                                    onFocus={() => {
+                                      setActiveRowIndex(realIndex);
+                                      setActiveColKey(col.key);
+                                    }}
+                                    type={col.type === 'number' || col.type === 'currency' ? 'number' : 'text'}
+                                    step={col.type === 'currency' ? '0.01' : undefined}
+                                    placeholder={col.type === 'currency' ? '$0.00' : undefined}
+                                    className={`font-mono h-8 text-xs border-0 focus-visible:ring-1 min-w-0 rounded-none ${inputBgStyle} ${selectionStyle}`}
+                                  />
+                                </TableCell>
+                              );
+                            }
+
+                            return (
+                              <TableCell 
+                                key={col.key} 
+                                className={`text-xs ${inputBgStyle} ${selectionStyle}`}
+                                onMouseDown={(e) => handleCellMouseDown(e, realIndex, col.key)}
+                                onMouseEnter={() => handleCellMouseEnter(realIndex, col.key)}
+                              >
+                                {col.type === 'currency' 
+                                  ? formatCurrency(value as number | null)
+                                  : (value?.toString() || <span className="text-muted-foreground">—</span>)
+                                }
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </div>
-              <h3 className="font-medium mb-1">Bulk Import NDCs</h3>
-              <p className="text-sm text-muted-foreground text-center max-w-sm">
-                Select a template and section, then upload an Excel file with NDC and QTY columns to bulk import data
-              </p>
-            </CardContent>
-          </Card>
-        )}
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
+
+            {/* Stats */}
+            <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground flex-wrap">
+              <span>{rows.filter(r => r.ndc || r.scannedNdc).length} items</span>
+              {searchQuery && <span>• {filteredRows.length} shown</span>}
+              <span>•</span>
+              <span>{rows.filter(r => r.source).length} found</span>
+              <span>•</span>
+              <span className="text-destructive">{rows.filter(r => !r.source && (r.ndc || r.scannedNdc)).length} not found</span>
+              <span>•</span>
+              <span className="font-medium">Total: {formatCurrency(sectionExtendedTotal)}</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
