@@ -2549,29 +2549,6 @@ const Scan = () => {
             </div>
           )}
             
-            {/* Last Scan Location Reminder */}
-            {lastScanInfo && (
-              <div className="mt-4 inline-flex items-center gap-3 px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <ScanBarcode className="h-4 w-4" />
-                  <span>Last scan:</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{lastScanInfo.templateName}</span>
-                  <span className="text-muted-foreground">→</span>
-                  <Badge variant="secondary" className="text-xs">{lastScanInfo.sectionName}</Badge>
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  className="h-7 px-2 ml-1"
-                  onClick={handleResumeLastScan}
-                >
-                  <ArrowLeft className="h-3.5 w-3.5 mr-1" />
-                  Resume
-                </Button>
-              </div>
-            )}
           </div>
 
           {/* Offline Sync Dialog */}
@@ -3170,7 +3147,7 @@ const Scan = () => {
             </ScrollArea>
 
             {/* Stats */}
-            <div className="flex gap-4 mt-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-4 mt-4 text-sm text-muted-foreground flex-wrap">
               <span>{scanRows.filter(r => r.ndc || r.scannedNdc).length} items scanned</span>
               {searchQuery && <span>• {filteredRows.length} shown</span>}
               <span>•</span>
@@ -3179,6 +3156,25 @@ const Scan = () => {
               <span className="text-destructive">
                 {scanRows.filter(r => r.source === 'not_found').length} not found
               </span>
+              
+              {/* Last Scan Location Reminder */}
+              {lastScanInfo && (
+                <div className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-border rounded-md text-xs">
+                  <ScanBarcode className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Last:</span>
+                  <span className="font-medium">{lastScanInfo.templateName}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="secondary" className="text-xs h-5">{lastScanInfo.sectionName}</Badge>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="h-6 px-2 text-xs"
+                    onClick={handleResumeLastScan}
+                  >
+                    Resume
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
