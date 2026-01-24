@@ -1989,10 +1989,20 @@ const Scan = () => {
       }
     }
     
-    const clipboardData = e.clipboardData?.getData('text');
-    if (!clipboardData) return;
-    
-    const pasteRows = clipboardData.split('\n').filter(line => line.trim()).map(line => line.split('\t'));
+    // IMPORTANT: Our copy handler sets `text/plain`, not `text`
+    const clipboardData =
+      e.clipboardData?.getData('text/plain') ||
+      e.clipboardData?.getData('text') ||
+      '';
+    if (!clipboardData.trim()) return;
+
+    // Normalize newlines and keep empty cells within a row (split by tab)
+    const pasteRows = clipboardData
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .filter(line => line.length > 0)
+      .map(line => line.split('\t').map(v => v.replace(/\r/g, '')));
     
     // If we have a selection, paste starting from selection start
     // Otherwise paste starting from active/focused cell
@@ -2005,11 +2015,31 @@ const Scan = () => {
     }
     
     const colKeys = getVisibleColKeys();
-    const startColIdx = colKeys.indexOf(startColKey);
-    if (startColIdx === -1) {
+
+    // Paste should flow across editable columns only; if start is non-editable,
+    // shift start to the next editable column to the right.
+    const editableColKeys = colKeys.filter(k => columnConfig[k]?.editable);
+    const visibleStartIdx = colKeys.indexOf(startColKey);
+    if (visibleStartIdx === -1) {
       console.log('Paste failed: column not found in visible columns', startColKey);
       return;
     }
+
+    let startEditableKey: string | null = null;
+    for (let i = visibleStartIdx; i < colKeys.length; i++) {
+      const k = colKeys[i];
+      if (columnConfig[k]?.editable) {
+        startEditableKey = k;
+        break;
+      }
+    }
+    if (!startEditableKey) {
+      console.log('Paste failed: no editable columns available from start', startColKey);
+      return;
+    }
+
+    const startEditableIdx = editableColKeys.indexOf(startEditableKey);
+    if (startEditableIdx === -1) return;
     
     e.preventDefault();
     
@@ -2025,10 +2055,10 @@ const Scan = () => {
         }
         
         pasteRow.forEach((value, pasteColIdx) => {
-          const targetColIdx = startColIdx + pasteColIdx;
-          if (targetColIdx >= colKeys.length) return;
-          
-          const colKey = colKeys[targetColIdx] as keyof ScanRow;
+          const colKeyStr = editableColKeys[startEditableIdx + pasteColIdx];
+          if (!colKeyStr) return;
+
+          const colKey = colKeyStr as keyof ScanRow;
           const colConf = columnConfig[colKey];
           if (!colConf?.editable) return;
           
@@ -2048,6 +2078,16 @@ const Scan = () => {
     
     toast.success(`Pasted ${pasteRows.length} row(s)`);
   }, [selectionStart, activeRowIndex, activeColKey, getVisibleColKeys, createEmptyRow, selectedSection]);
+
+  const getNextEditableColKey = (colKeys: string[], fromIdx: number, direction: -1 | 1) => {
+    let idx = fromIdx + direction;
+    while (idx >= 0 && idx < colKeys.length) {
+      const key = colKeys[idx];
+      if (columnConfig[key]?.editable) return key;
+      idx += direction;
+    }
+    return null;
+  };
 
   // Handle copy from selected cells
   const handleCopy = useCallback((e: ClipboardEvent) => {
@@ -2121,65 +2161,57 @@ const Scan = () => {
         }, 0);
       }
     } else if (e.key === 'ArrowLeft') {
-      // Move left when cursor is at start of text, or Alt is pressed
-      const atStart = e.currentTarget.selectionStart === 0;
-      if (atStart || e.altKey) {
-        e.preventDefault();
-        const newColIdx = Math.max(0, currentColIdx - 1);
-        const newColKey = colKeys[newColIdx];
-        if (isShift) {
-          if (!selectionStart) {
-            setSelectionStart({ row: rowIndex, col: colKey });
-          }
-          setSelectionEnd({ row: rowIndex, col: newColKey });
-        } else {
-          setSelectionStart(null);
-          setSelectionEnd(null);
-          setActiveColKey(newColKey);
-          setTimeout(() => {
-            const ref = cellInputRefs.current.get(`${rowIndex}-${newColKey}`);
-            ref?.focus();
-          }, 0);
+      // Excel-like: ArrowLeft always moves to previous *editable* cell
+      e.preventDefault();
+      const newColKey = getNextEditableColKey(colKeys, currentColIdx, -1) ?? colKey;
+      if (isShift) {
+        if (!selectionStart) {
+          setSelectionStart({ row: rowIndex, col: colKey });
         }
+        setSelectionEnd({ row: rowIndex, col: newColKey });
+      } else {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setActiveColKey(newColKey);
+        setTimeout(() => {
+          const ref = cellInputRefs.current.get(`${rowIndex}-${newColKey}`);
+          ref?.focus();
+        }, 0);
       }
     } else if (e.key === 'ArrowRight') {
-      // Move right when cursor is at end of text, or Alt is pressed
-      const atEnd = e.currentTarget.selectionStart === e.currentTarget.value.length;
-      if (atEnd || e.altKey) {
-        e.preventDefault();
-        const newColIdx = Math.min(colKeys.length - 1, currentColIdx + 1);
-        const newColKey = colKeys[newColIdx];
-        if (isShift) {
-          if (!selectionStart) {
-            setSelectionStart({ row: rowIndex, col: colKey });
-          }
-          setSelectionEnd({ row: rowIndex, col: newColKey });
-        } else {
-          setSelectionStart(null);
-          setSelectionEnd(null);
-          setActiveColKey(newColKey);
-          setTimeout(() => {
-            const ref = cellInputRefs.current.get(`${rowIndex}-${newColKey}`);
-            ref?.focus();
-          }, 0);
+      // Excel-like: ArrowRight always moves to next *editable* cell
+      e.preventDefault();
+      const newColKey = getNextEditableColKey(colKeys, currentColIdx, 1) ?? colKey;
+      if (isShift) {
+        if (!selectionStart) {
+          setSelectionStart({ row: rowIndex, col: colKey });
         }
+        setSelectionEnd({ row: rowIndex, col: newColKey });
+      } else {
+        setSelectionStart(null);
+        setSelectionEnd(null);
+        setActiveColKey(newColKey);
+        setTimeout(() => {
+          const ref = cellInputRefs.current.get(`${rowIndex}-${newColKey}`);
+          ref?.focus();
+        }, 0);
       }
     } else if (e.key === 'Tab') {
       // Tab moves right, Shift+Tab moves left
       e.preventDefault();
       const direction = e.shiftKey ? -1 : 1;
-      let newColIdx = currentColIdx + direction;
       let newRowIndex = rowIndex;
+      let newColKey = getNextEditableColKey(colKeys, currentColIdx, direction as -1 | 1);
       
-      if (newColIdx >= colKeys.length) {
-        newColIdx = 0;
-        newRowIndex = Math.min(scanRows.length - 1, rowIndex + 1);
-      } else if (newColIdx < 0) {
-        newColIdx = colKeys.length - 1;
-        newRowIndex = Math.max(0, rowIndex - 1);
+      if (!newColKey) {
+        // Wrap to next/prev row
+        newRowIndex = direction === 1
+          ? Math.min(scanRows.length - 1, rowIndex + 1)
+          : Math.max(0, rowIndex - 1);
+        const wrapStartIdx = direction === 1 ? -1 : colKeys.length;
+        newColKey = getNextEditableColKey(colKeys, wrapStartIdx, direction as -1 | 1) ?? colKey;
       }
-      
-      const newColKey = colKeys[newColIdx];
+
       setSelectionStart(null);
       setSelectionEnd(null);
       setActiveRowIndex(newRowIndex);
