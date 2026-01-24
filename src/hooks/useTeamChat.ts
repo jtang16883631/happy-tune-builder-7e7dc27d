@@ -177,7 +177,21 @@ export function useTeamChat() {
 
   // Create a new room
   const createRoom = useCallback(async (name: string, description?: string) => {
-    if (!user) return null;
+    if (!user) {
+      toast.error('Please sign in to create a chat room');
+      return null;
+    }
+
+    // Extra guard: sometimes UI state can have a user while the auth session is missing/expired.
+    // If the request has no valid session JWT, backend policies will see auth.uid() as NULL.
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      console.error('Error reading session:', sessionError);
+    }
+    if (!sessionData?.session) {
+      toast.error('Your session has expired — please sign in again.');
+      return null;
+    }
 
     try {
       const { data: room, error: roomError } = await supabase
@@ -208,7 +222,14 @@ export function useTeamChat() {
       return room;
     } catch (error: any) {
       console.error('Error creating room:', error);
-      toast.error('Failed to create room');
+      // Surface the real reason (most commonly: not signed in, or permission policy/RLS)
+      const details =
+        error?.message ||
+        error?.error_description ||
+        error?.hint ||
+        error?.details ||
+        'Failed to create room';
+      toast.error(details);
       return null;
     }
   }, [user, fetchRooms]);
