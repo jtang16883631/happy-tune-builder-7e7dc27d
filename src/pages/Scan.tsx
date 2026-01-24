@@ -207,8 +207,7 @@ const Scan = () => {
   const [outerNDCOptions, setOuterNDCOptions] = useState<OuterNDCOption[]>([]);
   const [pendingNDCLookup, setPendingNDCLookup] = useState<{ scannedNDC: string; rowIndex: number } | null>(null);
   
-  // State for last scan reminder dialog
-  const [lastScanReminderOpen, setLastScanReminderOpen] = useState(false);
+  // State for last scan info display (passive, no dialog)
   const [lastScanInfo, setLastScanInfo] = useState<{
     templateId: string;
     templateName: string;
@@ -385,7 +384,7 @@ const Scan = () => {
     }
   }, [authLoading, hasRole, navigate]);
 
-  // Check for last scan location on initial load
+  // Check for last scan location on initial load (passive display only)
   useEffect(() => {
     // Only check once when templates are loaded and no template is selected yet
     if (templatesLoading || selectedTemplate) return;
@@ -398,7 +397,6 @@ const Scan = () => {
         const templateExists = templates.some(t => t.id === parsed.templateId);
         if (templateExists && parsed.templateId && parsed.sectionName) {
           setLastScanInfo(parsed);
-          setLastScanReminderOpen(true);
         }
       } catch {
         // Ignore parse errors
@@ -542,7 +540,7 @@ const Scan = () => {
     const template = templates.find(t => t.id === lastScanInfo.templateId);
     if (!template) {
       toast.error('Template no longer exists');
-      setLastScanReminderOpen(false);
+      setLastScanInfo(null);
       return;
     }
     
@@ -581,7 +579,7 @@ const Scan = () => {
       setSectionsLoading(false);
     }
     
-    setLastScanReminderOpen(false);
+    setLastScanInfo(null);
   }, [lastScanInfo, templates, getSections, loadAvailableCostSheets, loadSectionRecords]);
 
   const handleSelectTemplate = async (template: CloudTemplate) => {
@@ -2550,6 +2548,30 @@ const Scan = () => {
               <span>Offline Mode - Data saved locally</span>
             </div>
           )}
+            
+            {/* Last Scan Location Reminder */}
+            {lastScanInfo && (
+              <div className="mt-4 inline-flex items-center gap-3 px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-sm">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <ScanBarcode className="h-4 w-4" />
+                  <span>Last scan:</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{lastScanInfo.templateName}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="secondary" className="text-xs">{lastScanInfo.sectionName}</Badge>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="h-7 px-2 ml-1"
+                  onClick={handleResumeLastScan}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+                  Resume
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Offline Sync Dialog */}
@@ -3321,41 +3343,6 @@ const Scan = () => {
         templateId={selectedTemplate?.id || null}
       />
 
-      {/* Last Scan Reminder Dialog */}
-      <Dialog open={lastScanReminderOpen} onOpenChange={setLastScanReminderOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ScanBarcode className="h-5 w-5 text-primary" />
-              Resume Last Scan?
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground mb-3">
-              You were last scanning in:
-            </p>
-            <div className="bg-muted rounded-lg p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium">{lastScanInfo?.templateName}</span>
-              </div>
-              <div className="flex items-center gap-2 pl-6">
-                <span className="text-sm text-muted-foreground">Section:</span>
-                <Badge variant="secondary">{lastScanInfo?.sectionName}</Badge>
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="flex gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setLastScanReminderOpen(false)}>
-              Start Fresh
-            </Button>
-            <Button onClick={handleResumeLastScan}>
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Resume
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AppLayout>
   );
 };
