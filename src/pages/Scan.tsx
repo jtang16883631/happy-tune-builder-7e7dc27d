@@ -1872,11 +1872,44 @@ const Scan = () => {
     return row.qty !== null && row.qty !== undefined ? row.qty.toString() : '';
   };
 
-  // Static column keys for navigation (defined early to avoid circular dependency)
-  const allColumnKeys = ['loc', 'device', 'rec', 'time', 'ndc', 'scannedNdc', 'qty', 'misDivisor', 'misCountMethod', 
-    'itemNumber', 'medDesc', 'meridianDesc', 'trade', 'generic', 'strength', 'packSz', 'fdaSize', 'sizeTxt', 
-    'doseForm', 'manufacturer', 'genericCode', 'deaClass', 'ahfs', 'source', 'packCost', 'unitCost', 'extended', 
-    'blank', 'sheetType', 'auditCriteria', 'originalQty', 'auditorInitials', 'results', 'additionalNotes'];
+  // Static column config for navigation and paste (defined early to avoid circular dependency)
+  const columnConfig: Record<string, { editable: boolean; type?: string }> = {
+    loc: { editable: true },
+    device: { editable: true },
+    rec: { editable: true },
+    time: { editable: true },
+    ndc: { editable: true },
+    scannedNdc: { editable: false },
+    qty: { editable: true, type: 'number' },
+    misDivisor: { editable: true, type: 'number' },
+    misCountMethod: { editable: true },
+    itemNumber: { editable: true },
+    medDesc: { editable: true },
+    meridianDesc: { editable: true },
+    trade: { editable: true },
+    generic: { editable: true },
+    strength: { editable: true },
+    packSz: { editable: true },
+    fdaSize: { editable: true },
+    sizeTxt: { editable: true },
+    doseForm: { editable: true },
+    manufacturer: { editable: true },
+    genericCode: { editable: true },
+    deaClass: { editable: true },
+    ahfs: { editable: true },
+    source: { editable: true },
+    packCost: { editable: true, type: 'currency' },
+    unitCost: { editable: true, type: 'currency' },
+    extended: { editable: false, type: 'currency' },
+    blank: { editable: true },
+    sheetType: { editable: true },
+    auditCriteria: { editable: true },
+    originalQty: { editable: true, type: 'number' },
+    auditorInitials: { editable: true },
+    results: { editable: true },
+    additionalNotes: { editable: true },
+  };
+  const allColumnKeys = Object.keys(columnConfig);
 
   // Helper to get visible column keys
   const getVisibleColKeys = useCallback(() => {
@@ -1975,12 +2008,12 @@ const Scan = () => {
           if (targetColIdx >= colKeys.length) return;
           
           const colKey = colKeys[targetColIdx] as keyof ScanRow;
-          const col = columns.find(c => c.key === colKey);
-          if (!col?.editable) return;
+          const colConf = columnConfig[colKey];
+          if (!colConf?.editable) return;
           
           // Parse value based on column type
           let parsedValue: any = value;
-          if (col.type === 'number' || col.type === 'currency') {
+          if (colConf.type === 'number' || colConf.type === 'currency') {
             const num = parseFloat(value.replace(/[^0-9.-]/g, ''));
             parsedValue = isNaN(num) ? null : num;
           }
@@ -1993,7 +2026,7 @@ const Scan = () => {
     });
     
     toast.success(`Pasted ${pasteRows.length} row(s)`);
-  }, [selectionStart, activeRowIndex, activeColKey, getVisibleColKeys, columns, createEmptyRow, selectedSection]);
+  }, [selectionStart, activeRowIndex, activeColKey, getVisibleColKeys, createEmptyRow, selectedSection]);
 
   // Handle copy from selected cells
   const handleCopy = useCallback((e: ClipboardEvent) => {
