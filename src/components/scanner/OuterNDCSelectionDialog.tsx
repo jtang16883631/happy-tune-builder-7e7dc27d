@@ -69,7 +69,7 @@ export function OuterNDCSelectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[90vw] lg:max-w-6xl p-0 overflow-hidden">
         <DialogHeader className="px-4 pt-4 pb-2 border-b bg-muted/30">
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">Scanned Inner NDC:</span>
@@ -112,7 +112,7 @@ export function OuterNDCSelectionDialog({
                   <span className="font-mono text-sm font-medium text-primary min-w-[120px]">
                     {formatNDC(option.outerNDC)}
                   </span>
-                  <span className="text-sm truncate">
+                  <span className="text-sm">
                     {displayDesc} {displaySize}
                   </span>
                 </Label>
