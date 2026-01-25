@@ -360,12 +360,30 @@ const Index = () => {
 
 
   const handleDeleteSelected = async () => {
+    const errors: string[] = [];
+    let successCount = 0;
+
     for (const templateId of Array.from(selectedTemplates)) {
-      await deleteTemplate(templateId);
+      const result = await deleteTemplate(templateId);
+      if (result.success) {
+        successCount++;
+      } else {
+        errors.push(result.error || 'Unknown error');
+      }
     }
+
     setSelectedTemplates(new Set());
     setShowDeleteDialog(false);
-    toast({ title: 'Templates deleted' });
+
+    if (errors.length > 0) {
+      toast({ 
+        title: 'Delete failed', 
+        description: errors[0],
+        variant: 'destructive' 
+      });
+    } else if (successCount > 0) {
+      toast({ title: `${successCount} template(s) deleted` });
+    }
   };
 
   const handleUpdateCostData = async (event: React.ChangeEvent<HTMLInputElement>) => {
