@@ -2601,7 +2601,6 @@ const Scan = () => {
                 onSync={syncWithCloud}
               />
             </div>
-            </div>
             
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-4">
               <ScanBarcode className="h-7 w-7 text-primary" />
