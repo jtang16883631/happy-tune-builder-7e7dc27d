@@ -145,9 +145,10 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
   };
 
   const fetchTemplateCostItemsFromCloud = async (templateId: string, label: string, silent = false) => {
-    const costItemsLimit = 5000; // Increased from 1000 for fewer round trips
+    // Use range-based pagination to bypass Supabase's 1000 row default limit
+    const costItemsBatchSize = 5000;
     let hasMore = true;
-    let lastId: string | null = null;
+    let offset = 0;
     let page = 0;
     let items: any[] = [];
 
@@ -161,16 +162,18 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
         setProgress((prev) => Math.min(prev + 0.5, 44));
       }
 
-      let q = supabase
-        .from('template_cost_items')
-        .select('*')
-        .eq('template_id', templateId)
-        .order('id', { ascending: true })
-        .limit(costItemsLimit);
-
-      if (lastId) q = q.gt('id', lastId);
-
-      const { data, error } = await withTimeout<any>(q, 60000, 'Fetching cost items');
+      // Use .range() instead of .limit() to bypass Supabase's default 1000 row limit
+      const { data, error } = await withTimeout<any>(
+        supabase
+          .from('template_cost_items')
+          .select('*')
+          .eq('template_id', templateId)
+          .order('id', { ascending: true })
+          .range(offset, offset + costItemsBatchSize - 1),
+        120000, // 2 minute timeout for large batches
+        'Fetching cost items'
+      );
+      
       if (error) throw error;
 
       const batch = data || [];
@@ -180,8 +183,8 @@ export function OfflineDataTransferDialog({ open, onOpenChange }: OfflineDataTra
       }
 
       items = items.concat(batch);
-      lastId = batch[batch.length - 1]?.id ?? null;
-      hasMore = batch.length === costItemsLimit;
+      offset += batch.length;
+      hasMore = batch.length === costItemsBatchSize;
     }
 
     return items;

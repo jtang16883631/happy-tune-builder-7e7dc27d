@@ -521,8 +521,9 @@ export function useOfflineTemplates() {
         setSyncProgress(prev => ({ ...prev, status: 'fetching_cost_items', costItemsFetched: 0 }));
 
         // Fetch and insert cost items with pagination (handle >1000 items)
+        // Using larger batch size (5000) for fewer network round trips on large datasets
         let costItemsOffset = 0;
-        const costItemsLimit = 1000;
+        const costItemsLimit = 5000;
         let hasMoreCostItems = true;
         let totalCostItemsFetched = 0;
         
@@ -634,8 +635,9 @@ export function useOfflineTemplates() {
           }
 
           // Fetch and insert cost items with pagination (handle >1000 items)
+          // Using larger batch size (5000) for fewer network round trips on large datasets
           let costItemsOffset = 0;
-          const costItemsLimit = 1000;
+          const costItemsLimit = 5000;
           let hasMoreCostItems = true;
           
           while (hasMoreCostItems) {
