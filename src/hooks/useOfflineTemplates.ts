@@ -851,6 +851,195 @@ export function useOfflineTemplates() {
     }
   }, [db]);
 
+  // Export offline database to binary format for flash drive transfer
+  const exportToFlashDrive = useCallback((): { 
+    data: Uint8Array; 
+    templates: OfflineTemplate[];
+    sectionCount: number;
+    costItemCount: number;
+  } | null => {
+    if (!db) return null;
+    
+    try {
+      const templates = getTemplates();
+      
+      // Count sections and cost items
+      const sectionCountResult = db.exec('SELECT COUNT(*) FROM sections');
+      const sectionCount = sectionCountResult[0]?.values[0]?.[0] as number || 0;
+      
+      const costItemCountResult = db.exec('SELECT COUNT(*) FROM cost_items');
+      const costItemCount = costItemCountResult[0]?.values[0]?.[0] as number || 0;
+      
+      const dbData = db.export();
+      return { 
+        data: new Uint8Array(dbData), 
+        templates,
+        sectionCount,
+        costItemCount,
+      };
+    } catch (err) {
+      console.error('Export to flash drive error:', err);
+      return null;
+    }
+  }, [db, getTemplates]);
+
+  // Preview import from flash drive file
+  const previewFlashDriveImport = useCallback(async (
+    file: File
+  ): Promise<{ 
+    success: boolean; 
+    error?: string; 
+    templates?: Array<{ id: string; name: string; inv_date: string | null; facility_name: string | null; costItemCount?: number }>;
+  }> => {
+    if (!sqlRef.current) return { success: false, error: 'SQL.js not initialized' };
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      const tempDb = new sqlRef.current.Database(data);
+      
+      // Query templates
+      const templatesResult = tempDb.exec(`
+        SELECT id, cloud_id, name, inv_date, facility_name 
+        FROM templates 
+        ORDER BY inv_date DESC, name
+      `);
+      
+      if (templatesResult.length === 0) {
+        tempDb.close();
+        return { success: false, error: 'No templates found in file' };
+      }
+      
+      const templates = templatesResult[0].values.map((row: any[]) => {
+        const templateId = row[0];
+        
+        // Count cost items for this template
+        const costCountResult = tempDb.exec(`SELECT COUNT(*) FROM cost_items WHERE template_id = ?`, [templateId]);
+        const costItemCount = costCountResult[0]?.values[0]?.[0] as number || 0;
+        
+        return {
+          id: String(templateId),
+          cloud_id: row[1] as string | null,
+          name: row[2] as string,
+          inv_date: row[3] as string | null,
+          facility_name: row[4] as string | null,
+          costItemCount,
+        };
+      });
+      
+      tempDb.close();
+      
+      return { success: true, templates };
+    } catch (err: any) {
+      console.error('Preview flash drive import error:', err);
+      return { success: false, error: err.message };
+    }
+  }, []);
+
+  // Import selected templates from flash drive file into offline database
+  const importFromFlashDrive = useCallback(async (
+    file: File,
+    selectedIds: string[],
+    onProgress?: (progress: number) => void
+  ): Promise<{ success: boolean; error?: string; imported: number }> => {
+    if (!sqlRef.current || !db || !user) return { success: false, error: 'Database not initialized', imported: 0 };
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const data = new Uint8Array(arrayBuffer);
+      const sourceDb = new sqlRef.current.Database(data);
+      
+      let imported = 0;
+      const total = selectedIds.length;
+      
+      for (let i = 0; i < selectedIds.length; i++) {
+        const sourceId = parseInt(selectedIds[i], 10);
+        onProgress?.(Math.round(((i + 0.5) / total) * 100));
+        
+        // Get template from source
+        const templateResult = sourceDb.exec(`
+          SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name
+          FROM templates WHERE id = ?
+        `, [sourceId]);
+        
+        if (templateResult.length === 0 || templateResult[0].values.length === 0) continue;
+        
+        const tRow = templateResult[0].values[0];
+        const templateName = tRow[1] as string;
+        const cloudId = tRow[0] as string | null;
+        
+        // Check if already exists by name
+        const existing = db.exec(`SELECT id FROM templates WHERE name = ?`, [templateName]);
+        if (existing.length > 0 && existing[0].values.length > 0) {
+          // Skip duplicates
+          continue;
+        }
+        
+        // Generate new local ID
+        const newLocalId = generateId();
+        
+        // Insert template
+        db.run(`
+          INSERT INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number, 
+                                 cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, 0)
+        `, [
+          newLocalId, 
+          cloudId, 
+          user.id, 
+          templateName, 
+          tRow[2], 
+          tRow[3], 
+          tRow[4], 
+          tRow[5], 
+          tRow[6], 
+          new Date().toISOString(), 
+          new Date().toISOString()
+        ]);
+        
+        // Copy sections
+        const sectionsResult = sourceDb.exec(`
+          SELECT sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?
+        `, [sourceId]);
+        
+        if (sectionsResult.length > 0) {
+          for (const sRow of sectionsResult[0].values) {
+            db.run(`
+              INSERT INTO sections (id, template_id, sect, description, full_section, cost_sheet)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `, [generateId(), newLocalId, sRow[0], sRow[1], sRow[2], sRow[3]]);
+          }
+        }
+        
+        // Copy cost items
+        const costResult = sourceDb.exec(`
+          SELECT ndc, material_description, unit_price, source, material, sheet_name
+          FROM cost_items WHERE template_id = ?
+        `, [sourceId]);
+        
+        if (costResult.length > 0) {
+          for (const cRow of costResult[0].values) {
+            db.run(`
+              INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [generateId(), newLocalId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5]]);
+          }
+        }
+        
+        imported++;
+        onProgress?.(Math.round(((i + 1) / total) * 100));
+      }
+      
+      sourceDb.close();
+      await saveDatabase();
+      
+      return { success: true, imported };
+    } catch (err: any) {
+      console.error('Import from flash drive error:', err);
+      return { success: false, error: err.message, imported: 0 };
+    }
+  }, [db, user, saveDatabase]);
+
   return {
     templates: db ? getTemplates() : [],
     isLoading,
@@ -875,5 +1064,10 @@ export function useOfflineTemplates() {
     pullFromCloud,
     pushToCloud,
     syncSelectedTemplates,
+    
+    // Flash drive operations
+    exportToFlashDrive,
+    previewFlashDriveImport,
+    importFromFlashDrive,
   };
 }

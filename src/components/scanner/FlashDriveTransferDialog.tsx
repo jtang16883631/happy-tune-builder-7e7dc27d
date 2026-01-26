@@ -25,16 +25,8 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { useDataTemplates } from '@/hooks/useDataTemplates';
-import { useOfflineTemplates, OfflineTemplate } from '@/hooks/useOfflineTemplates';
+import { useOfflineTemplates } from '@/hooks/useOfflineTemplates';
 import { formatFileSize } from '@/lib/dataIntegrity';
-
-interface TemplateInfo {
-  id: string;
-  name: string;
-  inv_date: string | null;
-  facility_name: string | null;
-}
 
 interface ImportPreviewTemplate {
   id: string;
@@ -42,7 +34,6 @@ interface ImportPreviewTemplate {
   inv_date: string | null;
   facility_name: string | null;
   costItemCount?: number;
-  sectionCount?: number;
 }
 
 interface FlashDriveTransferDialogProps {
@@ -65,94 +56,57 @@ export function FlashDriveTransferDialog({
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<{
     templates: ImportPreviewTemplate[];
-    metadata: any;
   } | null>(null);
   const [selectedImportIds, setSelectedImportIds] = useState<string[]>([]);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Use offline templates (the synced data) for export
+  // Use offline templates directly for both export and import
   const { 
     templates: offlineTemplates,
-    getSections: getOfflineSections,
-    getAllCostItems: getOfflineCostItems,
+    exportToFlashDrive,
+    previewFlashDriveImport,
+    importFromFlashDrive,
   } = useOfflineTemplates();
 
-  const { 
-    buildDatabaseFromLocalData,
-    previewImportDatabase,
-    importSelectedTemplates,
-  } = useDataTemplates();
-
-  // Get templates available for export (from offline synced cache)
-  const localTemplates = offlineTemplates;
-
   const handleExport = async () => {
-    if (localTemplates.length === 0) {
+    if (offlineTemplates.length === 0) {
       toast.error('No templates in local cache. Download templates to your device first.');
       return;
     }
 
     setIsExporting(true);
     setExportProgress(0);
-    setExportStatus('Preparing templates...');
+    setExportStatus('Building export file...');
 
     try {
-      // Prepare data for buildDatabaseFromLocalData
-      const templatesForExport = localTemplates.map(t => ({
-        id: t.id,
-        cloud_id: t.cloud_id,
-        name: t.name,
-        inv_date: t.inv_date,
-        facility_name: t.facility_name,
-        inv_number: t.inv_number,
-        cost_file_name: t.cost_file_name,
-        job_ticket_file_name: t.job_ticket_file_name,
-      }));
-
-      // Build the database using the local offline data
-      const result = await buildDatabaseFromLocalData(
-        templatesForExport,
-        async (templateId) => {
-          const sections = await getOfflineSections(templateId);
-          return sections.map(s => ({
-            sect: s.sect,
-            description: s.description,
-            full_section: s.full_section,
-            cost_sheet: s.cost_sheet ?? null,
-          }));
-        },
-        async (templateId) => {
-          return await getOfflineCostItems(templateId);
-        },
-        (progress) => {
-          setExportProgress(Math.round((progress.current / progress.total) * 80));
-          setExportStatus(`Processing ${progress.template} (${progress.current}/${progress.total})...`);
-        }
-      );
+      setExportProgress(30);
+      
+      // Use the direct export from offline database
+      const result = exportToFlashDrive();
 
       if (!result) {
         toast.error('Export failed - no data available');
         return;
       }
 
-      setExportProgress(90);
+      setExportProgress(70);
       setExportStatus('Creating file...');
 
       // Generate filename based on templates
       let filename = 'templates';
-      if (localTemplates.length === 1) {
-        const t = localTemplates[0];
+      if (result.templates.length === 1) {
+        const t = result.templates[0];
         const parts: string[] = [];
         if (t.inv_number) parts.push(t.inv_number.replace(/[^a-zA-Z0-9]/g, ''));
         if (t.facility_name) parts.push(t.facility_name.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_'));
         if (parts.length > 0) {
           filename = parts.join('_');
         }
-      } else if (localTemplates.length > 1) {
+      } else if (result.templates.length > 1) {
         // Multiple templates - use date + count
-        filename = `templates_${localTemplates.length}_${new Date().toISOString().split('T')[0]}`;
+        filename = `templates_${result.templates.length}_${new Date().toISOString().split('T')[0]}`;
       }
 
       // Create and download the file
@@ -170,8 +124,8 @@ export function FlashDriveTransferDialog({
       setExportStatus('Complete!');
       
       const sizeStr = formatFileSize(result.data.length);
-      const costItemCount = result.meta.costItemCount?.toLocaleString() || '0';
-      toast.success(`Exported ${result.meta.templateCount} templates (${costItemCount} cost items, ${sizeStr})`);
+      const costItemCount = result.costItemCount?.toLocaleString() || '0';
+      toast.success(`Exported ${result.templates.length} templates (${costItemCount} cost items, ${sizeStr})`);
     } catch (err: any) {
       toast.error(err.message || 'Export failed');
     } finally {
@@ -195,12 +149,11 @@ export function FlashDriveTransferDialog({
     setSelectedImportIds([]);
 
     try {
-      const result = await previewImportDatabase(file);
+      const result = await previewFlashDriveImport(file);
       
       if (result.success && result.templates) {
         setImportPreview({
           templates: result.templates,
-          metadata: result.metadata,
         });
         // Select all by default
         setSelectedImportIds(result.templates.map(t => t.id));
@@ -223,7 +176,7 @@ export function FlashDriveTransferDialog({
     setImportProgress(0);
 
     try {
-      const result = await importSelectedTemplates(importFile, selectedImportIds, (progress) => {
+      const result = await importFromFlashDrive(importFile, selectedImportIds, (progress) => {
         setImportProgress(progress);
       });
 
@@ -317,16 +270,16 @@ export function FlashDriveTransferDialog({
                 </div>
               </div>
 
-              {localTemplates.length > 0 ? (
+              {offlineTemplates.length > 0 ? (
                 <div className="mt-4 space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Templates to export:</span>
-                    <Badge variant="secondary">{localTemplates.length}</Badge>
+                    <Badge variant="secondary">{offlineTemplates.length}</Badge>
                   </div>
                   
                   <ScrollArea className="h-[150px] border rounded-md p-2 bg-background">
                     <div className="space-y-1">
-                      {localTemplates.map(t => (
+                      {offlineTemplates.map(t => (
                         <div key={t.id} className="flex items-center gap-2 text-sm py-1">
                           <FileText className="h-3.5 w-3.5 text-muted-foreground" />
                           <span className="truncate">{t.name}</span>
@@ -366,7 +319,7 @@ export function FlashDriveTransferDialog({
               </Button>
               <Button 
                 onClick={handleExport} 
-                disabled={isExporting || localTemplates.length === 0}
+                disabled={isExporting || offlineTemplates.length === 0}
                 className="gap-2"
               >
                 {isExporting ? (
@@ -434,13 +387,11 @@ export function FlashDriveTransferDialog({
                   </div>
                 </div>
 
-                {/* Verification status */}
-                {importPreview.metadata?.checksum && (
-                  <div className="flex items-center gap-2 text-sm text-primary">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>File integrity verified</span>
-                  </div>
-                )}
+                {/* Verification badge */}
+                <div className="flex items-center gap-2 text-sm text-primary">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>File read successfully</span>
+                </div>
 
                 {/* Template selection */}
                 <div className="space-y-2">
@@ -480,12 +431,15 @@ export function FlashDriveTransferDialog({
                               <div className="flex items-center gap-2">
                                 <span className="font-medium truncate">{template.name}</span>
                               </div>
-                              <div className="text-sm text-muted-foreground truncate">
-                                {template.facility_name || 'No facility'} • {formatDate(template.inv_date)}
-                                {template.costItemCount && (
-                                  <span className="ml-2">
-                                    • <Package className="h-3 w-3 inline" /> {template.costItemCount.toLocaleString()}
-                                  </span>
+                              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                                <span className="truncate">
+                                  {template.facility_name || 'No facility'} • {formatDate(template.inv_date)}
+                                </span>
+                                {template.costItemCount !== undefined && template.costItemCount > 0 && (
+                                  <Badge variant="outline" className="text-xs gap-1">
+                                    <Package className="h-3 w-3" />
+                                    {template.costItemCount.toLocaleString()}
+                                  </Badge>
                                 )}
                               </div>
                             </div>
@@ -496,6 +450,7 @@ export function FlashDriveTransferDialog({
                   </ScrollArea>
                 </div>
 
+                {/* Import progress */}
                 {isImporting && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm">
@@ -514,7 +469,7 @@ export function FlashDriveTransferDialog({
               </Button>
               <Button 
                 onClick={handleImport} 
-                disabled={isImporting || !importPreview || selectedImportIds.length === 0}
+                disabled={isImporting || !importFile || selectedImportIds.length === 0}
                 className="gap-2"
               >
                 {isImporting ? (
