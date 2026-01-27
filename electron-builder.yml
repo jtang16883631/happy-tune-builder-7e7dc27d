@@ -1,5 +1,5 @@
-appId: app.lovable.happytunebuilder
-productName: Happy Tune Builder
+appId: app.lovable.meridian
+productName: Meridian
 copyright: Copyright © 2025
 
 directories:
@@ -28,7 +28,7 @@ nsis:
   deleteAppDataOnUninstall: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Happy Tune Builder
+  shortcutName: Meridian
 
 mac:
   target:

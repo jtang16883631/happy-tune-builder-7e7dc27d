@@ -17,6 +17,7 @@ import Automation from "./pages/Automation";
 import FDA from "./pages/FDA";
 import Compile from "./pages/Compile";
 import UpdateLog from "./pages/UpdateLog";
+import Suggestion from "./pages/Suggestion";
 import Dashboard from "./pages/Dashboard";
 import ScheduleHub from "./pages/ScheduleHub";
 import Timesheet from "./pages/Timesheet";
@@ -216,6 +217,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <UpdateLog />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/suggestion"
+          element={
+            <ProtectedRoute>
+              <Suggestion />
             </ProtectedRoute>
           }
         />
