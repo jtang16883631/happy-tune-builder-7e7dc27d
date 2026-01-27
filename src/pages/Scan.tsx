@@ -203,7 +203,7 @@ const Scan = () => {
   // State for outer NDC selection dialog
   const [outerNDCDialogOpen, setOuterNDCDialogOpen] = useState(false);
   const [outerNDCOptions, setOuterNDCOptions] = useState<OuterNDCOption[]>([]);
-  const [pendingNDCLookup, setPendingNDCLookup] = useState<{ scannedNDC: string; rowIndex: number } | null>(null);
+  const [pendingNDCLookup, setPendingNDCLookup] = useState<{ scannedNDC: string; rowIndex: number; scannedDrug?: FDADrug | null } | null>(null);
   
   // State for last scan info display (passive, no dialog) - global across all templates
   const [lastScanInfo, setLastScanInfo] = useState<{
@@ -780,13 +780,22 @@ const Scan = () => {
   // 
   // finalNdc: The resolved outer NDC to use for lookup (after selection if multiple)
   // scannedNdc: The original scanned NDC (inner NDC)
-  const lookupNDC = useCallback(async (finalNdc: string, scannedNdc: string, rowIndex: number) => {
+  const lookupNDC = useCallback(async (finalNdc: string, scannedNdc: string, rowIndex: number, scannedDrugData?: FDADrug | null) => {
     if (!finalNdc || finalNdc.length < 10 || !selectedTemplate) return;
 
     const cleanNdc = finalNdc.replace(/-/g, '');
     const originalScanned = scannedNdc.replace(/-/g, '');
     
-    const fdaResult = fdaLookup(cleanNdc);
+    // First try to look up the outer NDC in FDA
+    let fdaResult = fdaLookup(cleanNdc);
+    
+    // If outer NDC not found in FDA but we have scanned drug data (from inner pack lookup),
+    // use that data instead - the outer NDC might not exist as its own row
+    if (!fdaResult && scannedDrugData) {
+      console.log('[lookupNDC] Outer NDC not found, using scanned drug data for metadata');
+      fdaResult = scannedDrugData;
+    }
+    
     const costItem = await getCostItemByNDC(selectedTemplate.id, cleanNdc, selectedSection?.cost_sheet ?? null);
 
     // MIS Count Method from FDA Column P (count_method)
@@ -865,10 +874,7 @@ const Scan = () => {
     
     setScanRows(prev => {
       const updated = [...prev];
-      // Only set NDC to the resolved outer NDC (finalNdc), NOT the scanned NDC
-      // scannedNdc is stored separately for reference
-      // Only populate NDC column if the outer NDC is DIFFERENT from the scanned NDC
-      // If they're the same, leave NDC blank to avoid redundant data
+      // Populate NDC column with the resolved outer NDC when it differs from scanned
       const outerNdcIsDifferent = cleanNdc !== originalScanned.replace(/\D/g, '');
       
       updated[rowIndex] = {
@@ -1082,10 +1088,10 @@ const Scan = () => {
       console.log('[NDC Lookup] FDANine1 <= 1, auto-selecting outer NDC');
       
       if (aeValue.length >= 10) {
-        // Use outer NDC from AE column
+        // Use outer NDC from AE column, pass scannedDrug for metadata fallback
         const normalizedAE = aeValue.length >= 11 ? aeValue.slice(0, 11) : aeValue.padStart(11, '0');
         console.log('[NDC Lookup] Auto-using AE column:', normalizedAE);
-        await lookupNDC(normalizedAE, cleanNdc, rowIndex);
+        await lookupNDC(normalizedAE, cleanNdc, rowIndex, scannedDrug);
         toast.success(`Outer NDC 自动选择: ${normalizedAE}`);
         return true;
       }
@@ -1102,7 +1108,7 @@ const Scan = () => {
         const finalOuterNDC = afValue.length >= 10 ? afValue : aeFromSearch;
         
         console.log('[NDC Lookup] Auto-using first outer NDC:', finalOuterNDC);
-        await lookupNDC(finalOuterNDC, cleanNdc, rowIndex);
+        await lookupNDC(finalOuterNDC, cleanNdc, rowIndex, scannedDrug);
         toast.success(`Outer NDC 自动选择: ${finalOuterNDC}`);
         return true;
       }
@@ -1184,7 +1190,7 @@ const Scan = () => {
       // Only one candidate despite FDANine1 > 1 - auto-select
       const finalOuterNDC = allOuterNDCs[0];
       console.log('[NDC Lookup] Only 1 outer NDC found, auto-selecting:', finalOuterNDC);
-      await lookupNDC(finalOuterNDC, cleanNdc, rowIndex);
+      await lookupNDC(finalOuterNDC, cleanNdc, rowIndex, scannedDrug);
       toast.success(`Outer NDC 自动选择: ${finalOuterNDC}`);
       return true;
     }
@@ -1215,7 +1221,7 @@ const Scan = () => {
     });
 
     setOuterNDCOptions(options);
-    setPendingNDCLookup({ scannedNDC: cleanNdc, rowIndex });
+    setPendingNDCLookup({ scannedNDC: cleanNdc, rowIndex, scannedDrug });
     setOuterNDCDialogOpen(true);
 
     return false; // Waiting for user selection
@@ -1226,13 +1232,14 @@ const Scan = () => {
   const handleOuterNDCSelect = useCallback(async (selectedOuterNDC: string) => {
     if (!pendingNDCLookup) return;
     
-    const { scannedNDC, rowIndex } = pendingNDCLookup;
+    const { scannedNDC, rowIndex, scannedDrug } = pendingNDCLookup;
     
     setOuterNDCDialogOpen(false);
     setOuterNDCOptions([]);
     setPendingNDCLookup(null);
     
-    await lookupNDC(selectedOuterNDC, scannedNDC, rowIndex);
+    // Pass scannedDrug so lookupNDC can use it for metadata if outer NDC doesn't exist in FDA
+    await lookupNDC(selectedOuterNDC, scannedNDC, rowIndex, scannedDrug);
     
     // Focus on QTY field after selection
     requestAnimationFrame(() => {
