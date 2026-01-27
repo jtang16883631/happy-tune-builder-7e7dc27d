@@ -339,18 +339,19 @@ export function useLocalFDA() {
           getVal(row, 'ENTRY UPDATED FROM FDA', 'entry_updated_fda'),
           getVal(row, 'Cardinal UPC pulled from FDA site since 2022', 'cardinal_upc'),
           getVal(row, 'NDC9Outer', 'ndc9_outer'),
-          // Column AE - Outer Pack NDC
+          // Column AE - Outer Pack NDC (outerpack_ndc)
           getVal(row, 'AE', 'Outerpack NDC', 'Outer Pack NDC', 'OUTERPACK NDC', 'outerpack_ndc', 'OuterPack NDC'),
-          // Column AF - FDANine1 (count of outer packs for inner pack)
+          // Column AG - Left 9 / Innerpack-Outer Left 9 (innerpack_outer_left9)
+          getVal(row, 'AG', 'Innerpack - Outer Left 9', 'Innerpack-Outer Left 9', 'Left 9', 'LEFT 9', 'innerpack_outer_left9', 'Innerpack Outer Left 9', 'InnerPack-Outer Left 9', 'L9', 'Left9'),
+          // Column AH - McKesson UPC (mckesson_upc)
+          getVal(row, 'AH', 'McKesson UPC', 'mckesson_upc'),
+          // Column AF - FDANine1 (fda_nine_1) - count of outer packs for inner pack
           (() => {
             const val = getVal(row, 'AF', 'FDANine1', 'FDA Nine 1', 'fda_nine_1', 'FDANine', 'Nine1');
             if (val === null || val === '') return null;
             const num = parseInt(val, 10);
             return isNaN(num) ? null : num;
           })(),
-          // Column AG - Left 9 / Innerpack-Outer Left 9
-          getVal(row, 'AG', 'Innerpack - Outer Left 9', 'Innerpack-Outer Left 9', 'Left 9', 'LEFT 9', 'innerpack_outer_left9', 'Innerpack Outer Left 9', 'InnerPack-Outer Left 9', 'L9', 'Left9'),
-          getVal(row, 'AH', 'McKesson UPC', 'mckesson_upc'),
         ]);
 
         success++;
