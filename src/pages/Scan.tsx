@@ -1061,34 +1061,54 @@ const Scan = () => {
       }
     }
 
-    // Step B: IO == "I" (Inner Pack) - find outer NDC
-    console.log('[NDC Lookup] IO = "I" (Inner Pack), checking for outer NDC...');
+    // Step B: IO == "I" (Inner Pack) - check FDANine1 to decide if dialog needed
+    console.log('[NDC Lookup] IO = "I" (Inner Pack), checking FDANine1 and outer NDC...');
     
-    // FIRST: Check if the scanned row already has outer NDC in AE column (outerpack_ndc)
-    // This is the most common case - the outer NDC is stored directly on the inner pack row
+    // Get FDANine1 value - this determines how many outer packs exist for this inner pack
+    const fdaNine1 = scannedDrug?.fda_nine_1;
+    const fdaNine1Num = typeof fdaNine1 === 'number' ? fdaNine1 : (fdaNine1 ? parseInt(String(fdaNine1), 10) : 0);
+    console.log('[NDC Lookup] FDANine1 value:', fdaNine1, '-> parsed:', fdaNine1Num);
+    
+    // Check AE column (outerpack_ndc) on the scanned row first
     const aeValue = scannedDrug?.outerpack_ndc?.toString().replace(/\D/g, '') || '';
     console.log('[NDC Lookup] AE column (outerpack_ndc) value:', aeValue);
     
-    if (aeValue.length >= 10) {
-      // Found outer NDC directly in the same row's AE column - use it automatically
-      const normalizedAE = aeValue.length >= 11 ? aeValue.slice(0, 11) : aeValue.padStart(11, '0');
-      console.log('[NDC Lookup] Found outer NDC in AE column, auto-using:', normalizedAE);
-      await lookupNDC(normalizedAE, cleanNdc, rowIndex);
-      toast.success(`Outer NDC 自动选择: ${normalizedAE}`);
-      return true;
-    }
-
-    // SECOND: Search AD column (ndc9_outer) for candidates using outerKey
-    console.log('[NDC Lookup] AE column empty, searching AD column for outer candidates...');
-    const { candidates, outerNDCs } = findOuterCandidates(cleanNdc);
-    console.log('[NDC Lookup] Found', outerNDCs.length, 'outer NDC candidates from AD search');
-
-    // Step C: Branch based on outerCount
-    if (outerNDCs.length === 0) {
-      // outerCount == 0: No outer pack found - use scanned NDC, show warning
-      console.log('[NDC Lookup] No outer candidates found, using scanned NDC');
-      setTimeAndRec();
+    // DECISION LOGIC based on FDANine1:
+    // - FDANine1 <= 1 (or 0/null): Only one outer pack, auto-select, no popup
+    // - FDANine1 > 1: Multiple outer packs, must show popup
+    
+    if (fdaNine1Num <= 1) {
+      // Only one outer pack - auto-select without popup
+      console.log('[NDC Lookup] FDANine1 <= 1, auto-selecting outer NDC');
       
+      if (aeValue.length >= 10) {
+        // Use outer NDC from AE column
+        const normalizedAE = aeValue.length >= 11 ? aeValue.slice(0, 11) : aeValue.padStart(11, '0');
+        console.log('[NDC Lookup] Auto-using AE column:', normalizedAE);
+        await lookupNDC(normalizedAE, cleanNdc, rowIndex);
+        toast.success(`Outer NDC 自动选择: ${normalizedAE}`);
+        return true;
+      }
+      
+      // AE empty - search AD column for outer candidates
+      const { candidates, outerNDCs } = findOuterCandidates(cleanNdc);
+      console.log('[NDC Lookup] AD search found', outerNDCs.length, 'candidates');
+      
+      if (outerNDCs.length >= 1) {
+        // Use first outer NDC found
+        const matchedDrug = candidates[0];
+        const afValue = matchedDrug?.ndc?.toString().replace(/\D/g, '') || '';
+        const aeFromSearch = outerNDCs[0];
+        const finalOuterNDC = afValue.length >= 10 ? afValue : aeFromSearch;
+        
+        console.log('[NDC Lookup] Auto-using first outer NDC:', finalOuterNDC);
+        await lookupNDC(finalOuterNDC, cleanNdc, rowIndex);
+        toast.success(`Outer NDC 自动选择: ${finalOuterNDC}`);
+        return true;
+      }
+      
+      // No outer pack found - use scanned NDC directly
+      console.log('[NDC Lookup] No outer candidates, using scanned NDC');
       if (scannedDrug) {
         await lookupNDC(cleanNdc, cleanNdc, rowIndex);
         toast.warning('未找到 outer pack 对应关系', {
@@ -1097,6 +1117,7 @@ const Scan = () => {
         });
         return true;
       } else {
+        setTimeAndRec();
         const costFound = await lookupCostDataOnly(scannedNdc, rowIndex);
         if (costFound) {
           toast.warning('未找到 outer pack 对应关系', {
@@ -1112,33 +1133,73 @@ const Scan = () => {
         return false;
       }
     }
-
-    if (outerNDCs.length === 1) {
-      // outerCount == 1: Auto-select the single outer NDC
-      const matchedDrug = candidates[0];
-      const afValue = matchedDrug?.ndc?.toString().replace(/\D/g, '') || '';
-      const aeFromSearch = outerNDCs[0];
-      
-      // Use AF (ndc) if available, otherwise use AE (outerpack_ndc)
-      const finalOuterNDC = afValue.length >= 10 ? afValue : aeFromSearch;
-      
-      console.log('[NDC Lookup] Single outer NDC - AF:', afValue, 'AE:', aeFromSearch, '-> using:', finalOuterNDC);
+    
+    // FDANine1 > 1: Multiple outer packs - MUST show dialog for user selection
+    console.log('[NDC Lookup] FDANine1 > 1, must show picker dialog');
+    
+    // Collect all outer NDC candidates
+    let allOuterNDCs: string[] = [];
+    let allCandidates: FDADrug[] = [];
+    
+    // Add AE column value if present
+    if (aeValue.length >= 10) {
+      const normalizedAE = aeValue.length >= 11 ? aeValue.slice(0, 11) : aeValue.padStart(11, '0');
+      allOuterNDCs.push(normalizedAE);
+    }
+    
+    // Search AD column for more candidates
+    const { candidates, outerNDCs } = findOuterCandidates(cleanNdc);
+    allCandidates = candidates;
+    
+    // Merge unique outer NDCs
+    outerNDCs.forEach(ndc => {
+      if (!allOuterNDCs.includes(ndc)) {
+        allOuterNDCs.push(ndc);
+      }
+    });
+    
+    console.log('[NDC Lookup] Total outer NDC options:', allOuterNDCs.length);
+    
+    if (allOuterNDCs.length === 0) {
+      // No outer pack found despite FDANine1 > 1 - use scanned NDC
+      console.log('[NDC Lookup] No outer candidates found, using scanned NDC');
+      if (scannedDrug) {
+        await lookupNDC(cleanNdc, cleanNdc, rowIndex);
+        toast.warning('FDANine1 > 1 但未找到 outer pack', {
+          description: `使用扫描的 NDC: ${cleanNdc}`,
+          duration: 5000,
+        });
+        return true;
+      } else {
+        setTimeAndRec();
+        toast.error('NDC not found', {
+          description: `Inner pack with no outer mapping: ${cleanNdc}`,
+          duration: 6000,
+        });
+        return false;
+      }
+    }
+    
+    if (allOuterNDCs.length === 1) {
+      // Only one candidate despite FDANine1 > 1 - auto-select
+      const finalOuterNDC = allOuterNDCs[0];
+      console.log('[NDC Lookup] Only 1 outer NDC found, auto-selecting:', finalOuterNDC);
       await lookupNDC(finalOuterNDC, cleanNdc, rowIndex);
       toast.success(`Outer NDC 自动选择: ${finalOuterNDC}`);
       return true;
     }
 
-    // outerCount > 1: Must show dialog for user selection
-    console.log('[NDC Lookup] Multiple outer NDCs found, showing picker dialog');
+    // Multiple outer NDCs found - show dialog
+    console.log('[NDC Lookup] Showing picker dialog for', allOuterNDCs.length, 'options');
 
     // Build options with: outerNDC (11 digits) + B column (meridian_desc) + G column (fda_size)
-    const options: OuterNDCOption[] = outerNDCs.map(outerNDC => {
+    const options: OuterNDCOption[] = allOuterNDCs.map(outerNDC => {
       const matchByAE = (d: FDADrug) => {
         const digits = String(d?.outerpack_ndc ?? '').replace(/\D/g, '');
         const normalized = digits.length >= 11 ? digits.slice(0, 11) : digits.padStart(11, '0');
         return normalized === outerNDC;
       };
-      const drug = candidates.find(matchByAE) || getDrugByOuterNDC(outerNDC);
+      const drug = allCandidates.find(matchByAE) || getDrugByOuterNDC(outerNDC);
       
       return {
         outerNDC,
