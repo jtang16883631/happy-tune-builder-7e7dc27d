@@ -51,6 +51,7 @@ export interface FDADrug {
   outerpack_ndc: string | null;
   innerpack_outer_left9: string | null;
   mckesson_upc: string | null;
+  fda_nine_1: number | null; // Column AF - count of outer packs for inner pack
 }
 
 // IndexedDB helpers
@@ -216,7 +217,8 @@ export function useLocalFDA() {
         ndc9_outer TEXT,
         outerpack_ndc TEXT,
         innerpack_outer_left9 TEXT,
-        mckesson_upc TEXT
+        mckesson_upc TEXT,
+        fda_nine_1 INTEGER
       );
       CREATE INDEX idx_ndc ON drugs(ndc);
       CREATE INDEX idx_trade ON drugs(trade COLLATE NOCASE);
@@ -240,8 +242,8 @@ export function useLocalFDA() {
         meridian_divisor, count_method, verify_count_method, rx_otc, cardinal_cin,
         mckesson_item, abc_number, gcn, divisor_ml_each, io, ndc_inv_since_2020,
         ndc_cost_since_2020, entry_updated_fda, cardinal_upc, ndc9_outer,
-        outerpack_ndc, innerpack_outer_left9, mckesson_upc
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        outerpack_ndc, innerpack_outer_left9, mckesson_upc, fda_nine_1
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     // Begin transaction for faster inserts
@@ -339,6 +341,13 @@ export function useLocalFDA() {
           getVal(row, 'NDC9Outer', 'ndc9_outer'),
           // Column AE - Outer Pack NDC
           getVal(row, 'AE', 'Outerpack NDC', 'Outer Pack NDC', 'OUTERPACK NDC', 'outerpack_ndc', 'OuterPack NDC'),
+          // Column AF - FDANine1 (count of outer packs for inner pack)
+          (() => {
+            const val = getVal(row, 'AF', 'FDANine1', 'FDA Nine 1', 'fda_nine_1', 'FDANine', 'Nine1');
+            if (val === null || val === '') return null;
+            const num = parseInt(val, 10);
+            return isNaN(num) ? null : num;
+          })(),
           // Column AG - Left 9 / Innerpack-Outer Left 9
           getVal(row, 'AG', 'Innerpack - Outer Left 9', 'Innerpack-Outer Left 9', 'Left 9', 'LEFT 9', 'innerpack_outer_left9', 'Innerpack Outer Left 9', 'InnerPack-Outer Left 9', 'L9', 'Left9'),
           getVal(row, 'AH', 'McKesson UPC', 'mckesson_upc'),
