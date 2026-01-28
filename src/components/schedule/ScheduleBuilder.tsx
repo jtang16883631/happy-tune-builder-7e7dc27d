@@ -173,7 +173,7 @@ export function ScheduleBuilder({
   const jobDate = watch('job_date');
   const endDate = watch('end_date');
 
-  const mutation = useScheduleEventMutation();
+  const mutation = useScheduleEventMutation(teamMembers);
 
   const handleLookupPreviousInvoice = async () => {
     if (!previousInvoiceInput) return;

@@ -35,6 +35,9 @@ interface ScheduleEvent {
   exact_count_required: boolean | null;
   partial_inventory: boolean | null;
   client_onsite: boolean | null;
+  // Additional fields from scheduled_jobs table
+  mh_value?: string | null;
+  fac_phone?: string | null;
 }
 
 interface ExportRequest {
@@ -87,8 +90,8 @@ Deno.serve(async (req) => {
     // Group events by date
     const eventsByDate = groupEventsByDate(events);
     
-    // Format the schedule as text (Google Docs format)
-    const formattedSchedule = formatScheduleForDocs(startDate, endDate, eventsByDate);
+    // Format the schedule as text (matching the exact Google Docs format)
+    const formattedSchedule = formatScheduleForDocs(eventsByDate);
 
     // Check if Google API credentials are configured
     const googleCredentials = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY');
@@ -162,150 +165,191 @@ function groupEventsByDate(events: ScheduleEvent[]): Map<string, ScheduleEvent[]
   return new Map([...map.entries()].sort((a, b) => a[0].localeCompare(b[0])));
 }
 
-function formatScheduleForDocs(startDate: string, endDate: string, eventsByDate: Map<string, ScheduleEvent[]>): string {
+function formatScheduleForDocs(eventsByDate: Map<string, ScheduleEvent[]>): string {
   let output = '';
-  
-  // Add header
-  const startDateObj = new Date(startDate + 'T00:00:00');
-  const endDateObj = new Date(endDate + 'T00:00:00');
-  
-  output += `MERIDIAN SCHEDULE\n`;
-  output += `${formatDateLong(startDateObj)} - ${formatDateLong(endDateObj)}\n`;
-  output += '='.repeat(60) + '\n\n';
 
   for (const [dateStr, dayEvents] of eventsByDate) {
     const dateObj = new Date(dateStr + 'T00:00:00');
     
-    output += `${formatDateLong(dateObj)}\n`;
-    output += '-'.repeat(50) + '\n';
+    // Date header with separator line (format: |Monday, Sep 29, 2025)
+    output += `|${formatDateLong(dateObj)}\n\n`;
 
-    // Find travel day info
-    const travelEvent = dayEvents.find(e => e.event_type === 'travel' || e.is_travel_day);
-    if (travelEvent) {
-      output += '\n***Travel ONLY***\n';
-      if (travelEvent.location_from && travelEvent.location_to) {
-        output += `-${travelEvent.location_from} to ${travelEvent.location_to}\n`;
-      } else if (travelEvent.travel_info) {
-        output += `-${travelEvent.travel_info}\n`;
-      }
-      if (travelEvent.team_member_names?.length) {
-        output += `Team: {${travelEvent.team_member_names.join('}+{')}}\n`;
-      }
-      if (travelEvent.hotel_info) {
-        output += `Hotel Info: ${travelEvent.hotel_info}\n`;
-      }
-      output += '\n';
-    }
-
-    // Off day check
-    const offEvent = dayEvents.find(e => e.event_type === 'off');
-    if (offEvent) {
-      output += '\nALL off per schedule\n';
-      if (offEvent.event_title) {
-        output += `(${offEvent.event_title})\n`;
-      }
-      if (offEvent.team_member_names?.length) {
-        output += `Team: ${offEvent.team_member_names.join(', ')}\n`;
-      }
-      output += '\n';
-    }
-
-    // Note events
-    const noteEvents = dayEvents.filter(e => e.event_type === 'note');
-    for (const noteEvent of noteEvents) {
-      output += `\n***NOTE: ${noteEvent.event_title || noteEvent.notes || 'Important'}***\n`;
-      if (noteEvent.notes && noteEvent.notes !== noteEvent.event_title) {
-        output += `${noteEvent.notes}\n`;
-      }
-      output += '\n';
-    }
-
-    // Regular work events
+    // Process work events first
     const workEvents = dayEvents.filter(e => 
       e.event_type === 'work' || (!e.event_type && !e.is_travel_day && e.event_type !== 'off' && e.event_type !== 'note')
     );
     
     for (const event of workEvents) {
-      output += '\n';
-      
-      // Invoice and start time line
+      // Invoice line: -Invoice: 25090199 START: 600a  NOTE: Team should arrive at 530a***
       if (event.invoice_number) {
         output += `-Invoice: ${event.invoice_number}`;
         if (event.start_time) {
           output += ` START: ${event.start_time}`;
         }
         if (event.arrival_note) {
-          output += ` NOTE: ${event.arrival_note}`;
+          output += `  NOTE: ${event.arrival_note}***`;
         }
         output += '\n';
       } else if (event.start_time) {
         output += `START: ${event.start_time}`;
         if (event.arrival_note) {
-          output += ` NOTE: ${event.arrival_note}`;
+          output += `  NOTE: ${event.arrival_note}***`;
         }
         output += '\n';
       }
 
-      // Team members
+      // Team members line: (3)JoeC+WendieW*+EricaR
       if (event.team_member_names?.length) {
-        output += `(${event.team_member_names.length})${event.team_member_names.join('+')}` + '\n';
+        const teamStr = event.team_member_names.map(name => {
+          // Format name as FirstnameL (e.g., "Joe Smith" -> "JoeS")
+          const parts = name.trim().split(' ');
+          if (parts.length >= 2) {
+            return parts[0] + parts[parts.length - 1].charAt(0);
+          }
+          return name;
+        }).join('+');
+        output += `(${event.team_member_names.length})${teamStr}\n`;
       }
 
-      // Special flags
-      if (event.exact_count_required) {
-        output += `***NOTE: Exact Count Required***\n`;
-      }
-      if (event.partial_inventory) {
-        output += `***NOTE: Partial Inventory***\n`;
-      }
-      if (event.client_onsite) {
-        output += `***NOTE: Client On-site***\n`;
-      }
-
-      // Notes (highlighted)
+      // Special notes (would be highlighted in yellow/red in Google Docs)
       if (event.notes) {
         output += `NOTE: ${event.notes}\n`;
       }
       if (event.special_notes) {
-        output += `***NOTE: ${event.special_notes}***\n`;
+        output += `***${event.special_notes}***\n`;
+      }
+
+      // Special flags
+      if (event.exact_count_required) {
+        output += `NOTE: Carousel will be NOT be manually counted**\n`;
+      }
+      if (event.partial_inventory) {
+        output += `***PARTIAL INVENTORY***\n`;
       }
 
       // Client info
-      if (event.client_id) {
-        output += `Client: ${event.client_id} - ${event.client_name}\n`;
-      } else {
-        output += `Client: ${event.client_name}\n`;
-      }
+      output += `Client: ${event.client_name}\n`;
 
+      // Address
       if (event.address) {
         output += `Address: ${event.address}\n`;
       }
 
+      // Previous Inventory Value
       if (event.previous_inventory_value) {
-        output += `Previous Inventory Value: ${event.previous_inventory_value}\n`;
+        output += `Previous Inventory Value: $${event.previous_inventory_value.replace(/^\$/, '')}\n`;
       }
 
+      // MH, Phone, FacPh line (combined)
+      const phoneInfo: string[] = [];
+      if (event.mh_value) {
+        phoneInfo.push(`MH: ${event.mh_value}`);
+      }
       if (event.phone) {
-        output += `MH: Phone: FacPh: ${event.phone}\n`;
+        phoneInfo.push(`Phone: ${event.phone}`);
+      }
+      if (event.fac_phone) {
+        phoneInfo.push(`FacPh: ${event.fac_phone}`);
+      }
+      if (phoneInfo.length > 0) {
+        output += phoneInfo.join(' ') + '\n';
+      } else if (event.phone) {
+        output += `Phone: ${event.phone}\n`;
       }
 
+      // Contact info
       if (event.onsite_contact) {
-        output += `Onsite Contact: ${event.onsite_contact}\n`;
+        output += `Contact: ${event.onsite_contact}\n`;
       }
 
-      if (event.corporate_contact) {
-        output += `Corporate Contact: ${event.corporate_contact}\n`;
-      }
-
+      // Email data to
       if (event.email_data_to) {
         output += `Email data to: ${event.email_data_to}\n`;
       }
 
+      // Final invoice to / Email invoice to
       if (event.final_invoice_to) {
-        output += `Final invoice: ${event.final_invoice_to}\n`;
+        output += `Email invoice to: ${event.final_invoice_to}\n`;
       }
+
+      output += '\n';
     }
 
+    // Process travel events (format: ***Travel After Job***)
+    const travelEvents = dayEvents.filter(e => e.event_type === 'travel' || e.is_travel_day);
+    for (const travelEvent of travelEvents) {
+      output += `***Travel After Job***\n`;
+      
+      if (travelEvent.location_from && travelEvent.location_to) {
+        output += `Travel/FLY to ${travelEvent.location_to} from ${travelEvent.location_from}:\n`;
+      } else if (travelEvent.event_title) {
+        output += `${travelEvent.event_title}\n`;
+      }
+
+      // Team members for travel
+      if (travelEvent.team_member_names?.length) {
+        const teamStr = travelEvent.team_member_names.map(name => {
+          const parts = name.trim().split(' ');
+          if (parts.length >= 2) {
+            return parts[0] + parts[parts.length - 1].charAt(0);
+          }
+          return name;
+        }).join('+');
+        output += `${teamStr}\n`;
+      }
+
+      // Flight/travel details
+      if (travelEvent.travel_info) {
+        output += `Flight Details: ${travelEvent.travel_info}\n`;
+      }
+
+      // Hotel info
+      if (travelEvent.hotel_info) {
+        output += `Hotel Info:${travelEvent.hotel_info}\n`;
+      }
+
+      output += '\n';
+    }
+
+    // Process off events (format: Off on road)
+    const offEvents = dayEvents.filter(e => e.event_type === 'off');
+    for (const offEvent of offEvents) {
+      output += `Off on road\n`;
+      
+      if (offEvent.location_to) {
+        output += `${offEvent.location_to}:\n`;
+      } else if (offEvent.event_title) {
+        output += `${offEvent.event_title}:\n`;
+      }
+
+      // Team members for off day
+      if (offEvent.team_member_names?.length) {
+        const teamStr = offEvent.team_member_names.map(name => {
+          const parts = name.trim().split(' ');
+          if (parts.length >= 2) {
+            return parts[0] + parts[parts.length - 1].charAt(0);
+          }
+          return name;
+        }).join('+');
+        output += `${teamStr}\n`;
+      }
+
+      output += '\n';
+    }
+
+    // Process note events
+    const noteEvents = dayEvents.filter(e => e.event_type === 'note');
+    for (const noteEvent of noteEvents) {
+      if (noteEvent.event_title) {
+        output += `***${noteEvent.event_title}***\n`;
+      }
+      if (noteEvent.notes && noteEvent.notes !== noteEvent.event_title) {
+        output += `${noteEvent.notes}\n`;
+      }
+      output += '\n';
+    }
+
+    // Add separator between days
     output += '\n';
   }
 
@@ -314,7 +358,7 @@ function formatScheduleForDocs(startDate: string, endDate: string, eventsByDate:
 
 function formatDateLong(date: Date): string {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   
   return `${days[date.getDay()]}, ${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
