@@ -10,13 +10,24 @@ import { CreateRoomDialog } from '@/components/chat/CreateRoomDialog';
 import { AddMemberDialog } from '@/components/chat/AddMemberDialog';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Hash, Loader2, MessageSquare, UserPlus, Users } from 'lucide-react';
+import { Hash, Loader2, MessageSquare, UserPlus, Users, Trash2 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 const Chat = () => {
   const navigate = useNavigate();
@@ -32,10 +43,13 @@ const Chat = () => {
     sendMessage,
     createRoom,
     addMember,
+    deleteRoom,
   } = useTeamChat();
 
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
+
+  const isOwner = currentRoom?.owner_id === userId;
 
   if (isLoading) {
     return (
@@ -133,6 +147,38 @@ const Chat = () => {
                   >
                     <UserPlus className="h-4 w-4" />
                   </Button>
+
+                  {/* Delete Room Button - Only for owner */}
+                  {isOwner && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Chat Room</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete "{currentRoom.name}"? This will permanently delete all messages and remove all members. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteRoom(currentRoom.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete Room
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                 </div>
               </div>
 
