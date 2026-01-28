@@ -15,9 +15,9 @@ export function WeeklyTotalBar({ totalHours, targetHours = 40 }: WeeklyTotalBarP
     <div className={cn(
       "sticky bottom-0 left-0 right-0 border-t-2 p-4 flex items-center justify-between",
       "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
-      isUnder && "border-t-amber-500 bg-amber-50/50",
-      isOver && "border-t-red-500 bg-red-50/50",
-      isOnTarget && "border-t-green-500 bg-green-50/50"
+      isUnder && "border-t-amber-500 bg-amber-50/50 dark:bg-amber-950/30",
+      isOver && "border-t-red-500 bg-red-50/50 dark:bg-red-950/30",
+      isOnTarget && "border-t-green-500 bg-green-50/50 dark:bg-green-950/30"
     )}>
       <div className="flex items-center gap-3">
         {isUnder && <AlertTriangle className="h-5 w-5 text-amber-600" />}
@@ -25,7 +25,7 @@ export function WeeklyTotalBar({ totalHours, targetHours = 40 }: WeeklyTotalBarP
         {isOnTarget && <CheckCircle2 className="h-5 w-5 text-green-600" />}
         
         <div>
-          <span className="text-sm text-muted-foreground">Weekly Total</span>
+          <span className="text-sm text-muted-foreground">Weekly Total (Office + Hospital only)</span>
           {isUnder && (
             <span className="text-xs text-amber-600 ml-2">
               ({(targetHours - totalHours).toFixed(1)}h remaining)

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, ChevronDown, ChevronRight, MessageSquare, Trash2 } from "lucide-react";
+import { Plus, MessageSquare, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,6 +11,8 @@ export interface TimesheetSegment {
   id: string;
   startTime: string;
   endTime: string;
+  startPeriod: "AM" | "PM";
+  endPeriod: "AM" | "PM";
   workType: string;
   autoLunch: boolean;
   lunchMinutes: number;
@@ -24,12 +26,16 @@ export interface DayEntry {
   isSelected: boolean;
 }
 
-const WORK_TYPES = [
-  { id: "office", label: "Office", color: "bg-green-500" },
-  { id: "hospital", label: "Hospital", color: "bg-blue-500" },
-  { id: "travel", label: "Travel", color: "bg-orange-500" },
-  { id: "lunch", label: "Lunch", color: "bg-yellow-500" },
-  { id: "vacation", label: "Vacation", color: "bg-pink-500" },
+// Work types based on user requirements - only office and hospital count hours
+export const WORK_TYPES = [
+  { id: "travel_only", label: "Travel Only Day", color: "bg-purple-500", countsHours: false },
+  { id: "hospital", label: "Hospital", color: "bg-blue-500", countsHours: true },
+  { id: "office", label: "Office", color: "bg-green-500", countsHours: true },
+  { id: "lunch", label: "Lunch", color: "bg-yellow-500", countsHours: false },
+  { id: "off_on_own", label: "Off On Own", color: "bg-gray-500", countsHours: false },
+  { id: "off_on_road", label: "Off On Road", color: "bg-slate-500", countsHours: false },
+  { id: "vacation", label: "Vacation", color: "bg-pink-500", countsHours: false },
+  { id: "company_holiday", label: "Company Holiday", color: "bg-red-500", countsHours: false },
 ];
 
 interface TimesheetRowProps {
@@ -37,8 +43,9 @@ interface TimesheetRowProps {
   dayName: string;
   onToggleSelect: (dateString: string) => void;
   onUpdateSegment: (dateString: string, segmentId: string, updates: Partial<TimesheetSegment>) => void;
-  onAddSegment: (dateString: string) => void;
+  onAddSegment: (dateString: string, workType?: string) => void;
   onDeleteSegment: (dateString: string, segmentId: string) => void;
+  onClearDay: (dateString: string) => void;
 }
 
 export function TimesheetRow({
@@ -48,26 +55,55 @@ export function TimesheetRow({
   onUpdateSegment,
   onAddSegment,
   onDeleteSegment,
+  onClearDay,
 }: TimesheetRowProps) {
-  const [expanded, setExpanded] = useState(false);
   const [showNotes, setShowNotes] = useState<Record<string, boolean>>({});
 
-  const hasMultipleSegments = dayEntry.segments.length > 1;
-  const hasAnyEntry = dayEntry.segments.some(s => s.startTime && s.endTime);
-
-  // Calculate daily hours
+  // Calculate daily hours - only count office and hospital
   const calculateSegmentHours = (segment: TimesheetSegment) => {
     if (!segment.startTime || !segment.endTime) return 0;
-    const [startH, startM] = segment.startTime.split(":").map(Number);
-    const [endH, endM] = segment.endTime.split(":").map(Number);
-    const totalMinutes = (endH * 60 + endM) - (startH * 60 + startM) - (segment.autoLunch ? segment.lunchMinutes : 0);
+    
+    const workTypeConfig = WORK_TYPES.find(t => t.id === segment.workType);
+    if (!workTypeConfig?.countsHours) return 0;
+    
+    // Parse time with AM/PM
+    let startHour = parseInt(segment.startTime.split(":")[0]);
+    const startMin = parseInt(segment.startTime.split(":")[1]);
+    let endHour = parseInt(segment.endTime.split(":")[0]);
+    const endMin = parseInt(segment.endTime.split(":")[1]);
+    
+    // Convert to 24-hour format
+    if (segment.startPeriod === "PM" && startHour !== 12) startHour += 12;
+    if (segment.startPeriod === "AM" && startHour === 12) startHour = 0;
+    if (segment.endPeriod === "PM" && endHour !== 12) endHour += 12;
+    if (segment.endPeriod === "AM" && endHour === 12) endHour = 0;
+    
+    const totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
     return Math.max(0, totalMinutes / 60);
   };
 
   const dailyHours = dayEntry.segments.reduce((sum, seg) => sum + calculateSegmentHours(seg), 0);
+  const hasAnyEntry = dayEntry.segments.some(s => s.startTime || s.endTime || s.workType);
 
   const toggleNotes = (segmentId: string) => {
     setShowNotes(prev => ({ ...prev, [segmentId]: !prev[segmentId] }));
+  };
+
+  const handleWorkTypeClick = (segmentId: string, workType: string, currentWorkType: string) => {
+    // Toggle off if clicking same type (allow deselect)
+    const newWorkType = currentWorkType === workType ? "" : workType;
+    onUpdateSegment(dayEntry.dateString, segmentId, { workType: newWorkType });
+    
+    // If selecting Office, auto-add a lunch segment
+    if (newWorkType === "office") {
+      onAddSegment(dayEntry.dateString, "lunch");
+    }
+  };
+
+  const togglePeriod = (segmentId: string, field: "startPeriod" | "endPeriod", currentPeriod: "AM" | "PM") => {
+    onUpdateSegment(dayEntry.dateString, segmentId, { 
+      [field]: currentPeriod === "AM" ? "PM" : "AM" 
+    });
   };
 
   return (
@@ -92,43 +128,65 @@ export function TimesheetRow({
 
             {/* Day & Date - only on first segment */}
             {index === 0 ? (
-              <div className="w-28 flex-shrink-0">
+              <div className="w-24 flex-shrink-0">
                 <div className="font-medium text-sm">{dayName}</div>
                 <div className="text-xs text-muted-foreground">
                   {format(dayEntry.date, "MM/dd")}
                 </div>
               </div>
             ) : (
-              <div className="w-28 flex-shrink-0 flex items-center gap-1">
+              <div className="w-24 flex-shrink-0 flex items-center gap-1">
                 <div className="w-4 h-px bg-border" />
-                <span className="text-xs text-muted-foreground">Segment {index + 1}</span>
+                <span className="text-xs text-muted-foreground">Seg {index + 1}</span>
               </div>
             )}
 
-            {/* Start Time */}
-            <Input
-              type="time"
-              value={segment.startTime}
-              onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { startTime: e.target.value })}
-              className="w-28 h-9 text-sm"
-            />
+            {/* Start Time with AM/PM toggle */}
+            <div className="flex items-center gap-1">
+              <Input
+                type="text"
+                placeholder="00:00"
+                value={segment.startTime}
+                onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { startTime: e.target.value })}
+                className="w-20 h-9 text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-12 text-xs font-medium"
+                onClick={() => togglePeriod(segment.id, "startPeriod", segment.startPeriod)}
+              >
+                {segment.startPeriod}
+              </Button>
+            </div>
 
-            {/* End Time */}
-            <Input
-              type="time"
-              value={segment.endTime}
-              onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { endTime: e.target.value })}
-              className="w-28 h-9 text-sm"
-            />
+            {/* End Time with AM/PM toggle */}
+            <div className="flex items-center gap-1">
+              <Input
+                type="text"
+                placeholder="00:00"
+                value={segment.endTime}
+                onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { endTime: e.target.value })}
+                className="w-20 h-9 text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-12 text-xs font-medium"
+                onClick={() => togglePeriod(segment.id, "endPeriod", segment.endPeriod)}
+              >
+                {segment.endPeriod}
+              </Button>
+            </div>
 
             {/* Work Type Pills */}
-            <div className="flex gap-1 flex-1">
+            <div className="flex gap-1 flex-1 flex-wrap">
               {WORK_TYPES.map((type) => (
                 <button
                   key={type.id}
-                  onClick={() => onUpdateSegment(dayEntry.dateString, segment.id, { workType: type.id })}
+                  onClick={() => handleWorkTypeClick(segment.id, type.id, segment.workType)}
                   className={cn(
-                    "px-3 py-1.5 text-xs font-medium rounded-full transition-all",
+                    "px-2 py-1 text-xs font-medium rounded-full transition-all whitespace-nowrap",
                     segment.workType === type.id
                       ? `${type.color} text-white shadow-sm`
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -139,36 +197,9 @@ export function TimesheetRow({
               ))}
             </div>
 
-            {/* Auto Lunch Toggle */}
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                <Checkbox
-                  checked={segment.autoLunch}
-                  onCheckedChange={(checked) => 
-                    onUpdateSegment(dayEntry.dateString, segment.id, { 
-                      autoLunch: !!checked,
-                      lunchMinutes: checked ? (segment.lunchMinutes || 30) : 0
-                    })
-                  }
-                  className="h-4 w-4"
-                />
-                <span className="text-muted-foreground whitespace-nowrap">Lunch</span>
-              </label>
-              {segment.autoLunch && (
-                <select
-                  value={segment.lunchMinutes}
-                  onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { lunchMinutes: Number(e.target.value) })}
-                  className="text-xs border rounded px-1 py-0.5 bg-background"
-                >
-                  <option value={30}>30m</option>
-                  <option value={60}>1h</option>
-                </select>
-              )}
-            </div>
-
-            {/* Hours display */}
+            {/* Hours display - only on first segment */}
             {index === 0 && (
-              <div className="w-16 text-right">
+              <div className="w-14 text-right">
                 <span className={cn(
                   "font-semibold text-sm",
                   dailyHours >= 8 ? "text-green-600" : dailyHours > 0 ? "text-foreground" : "text-muted-foreground"
@@ -203,17 +234,33 @@ export function TimesheetRow({
               </Button>
             )}
 
-            {/* Add segment button - only on last segment */}
-            {index === dayEntry.segments.length - 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-xs gap-1"
-                onClick={() => onAddSegment(dayEntry.dateString)}
-              >
-                <Plus className="h-3 w-3" />
-                Segment
-              </Button>
+            {/* Actions on first segment row */}
+            {index === 0 && (
+              <>
+                {/* Add segment button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs gap-1"
+                  onClick={() => onAddSegment(dayEntry.dateString)}
+                >
+                  <Plus className="h-3 w-3" />
+                  Seg
+                </Button>
+
+                {/* Clear day button */}
+                {hasAnyEntry && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={() => onClearDay(dayEntry.dateString)}
+                    title="Clear day"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </>
             )}
           </div>
 
