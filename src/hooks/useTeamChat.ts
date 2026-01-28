@@ -34,21 +34,15 @@ export interface RoomMember {
 }
 
 /**
- * Ensures there's an active session (even anonymous).
- * Returns the current user id, or null if something failed.
+ * Gets the current session user id.
+ * Returns the user id if logged in, or null if not authenticated.
  */
-async function ensureSession(): Promise<string | null> {
+async function getSessionUserId(): Promise<string | null> {
   const { data: sessionData } = await supabase.auth.getSession();
   if (sessionData?.session?.user) {
     return sessionData.session.user.id;
   }
-  // No session – sign in anonymously
-  const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
-  if (anonError) {
-    console.error('Anonymous sign-in failed:', anonError);
-    return null;
-  }
-  return anonData?.user?.id ?? null;
+  return null;
 }
 
 export function useTeamChat() {
@@ -68,7 +62,7 @@ export function useTeamChat() {
     initDone.current = true;
 
     (async () => {
-      const uid = await ensureSession();
+      const uid = await getSessionUserId();
       setUserId(uid);
       setIsLoading(false);
     })();
@@ -208,14 +202,14 @@ export function useTeamChat() {
 
   // Create a new room
   const createRoom = useCallback(async (name: string, description?: string) => {
-    // Ensure we have a session (anonymous is fine)
+    // Require a logged-in session
     let uid = userId;
     if (!uid) {
-      uid = await ensureSession();
+      uid = await getSessionUserId();
       if (uid) setUserId(uid);
     }
     if (!uid) {
-      toast.error('Could not authenticate – please try again.');
+      toast.error('Please log in to create a chat room.');
       return null;
     }
 
