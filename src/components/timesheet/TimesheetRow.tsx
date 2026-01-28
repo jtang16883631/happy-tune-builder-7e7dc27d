@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -48,6 +49,37 @@ interface TimesheetRowProps {
   onClearDay: (dateString: string) => void;
 }
 
+// Parse flexible time input: "900", "0900", "9:00", "09:00" → "09:00"
+function parseTimeInput(input: string): string {
+  // Remove all non-digit characters
+  const digits = input.replace(/\D/g, "");
+  
+  if (!digits) return "";
+  
+  let hours: number;
+  let minutes: number;
+  
+  if (digits.length <= 2) {
+    // Just hours: "9" → 09:00, "12" → 12:00
+    hours = parseInt(digits, 10);
+    minutes = 0;
+  } else if (digits.length === 3) {
+    // "900" → 9:00
+    hours = parseInt(digits.slice(0, 1), 10);
+    minutes = parseInt(digits.slice(1), 10);
+  } else {
+    // "0900", "1230" → 09:00, 12:30
+    hours = parseInt(digits.slice(0, 2), 10);
+    minutes = parseInt(digits.slice(2, 4), 10);
+  }
+  
+  // Validate ranges (12-hour format)
+  if (hours < 0 || hours > 12) hours = 12;
+  if (minutes < 0 || minutes > 59) minutes = 0;
+  
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
 export function TimesheetRow({
   dayEntry,
   dayName,
@@ -89,14 +121,19 @@ export function TimesheetRow({
     setShowNotes(prev => ({ ...prev, [segmentId]: !prev[segmentId] }));
   };
 
-  const handleWorkTypeClick = (segmentId: string, workType: string, currentWorkType: string) => {
-    // Toggle off if clicking same type (allow deselect)
-    const newWorkType = currentWorkType === workType ? "" : workType;
-    onUpdateSegment(dayEntry.dateString, segmentId, { workType: newWorkType });
+  const handleWorkTypeChange = (segmentId: string, workType: string) => {
+    onUpdateSegment(dayEntry.dateString, segmentId, { workType });
     
     // If selecting Office, auto-add a lunch segment
-    if (newWorkType === "office") {
+    if (workType === "office") {
       onAddSegment(dayEntry.dateString, "lunch");
+    }
+  };
+
+  const handleTimeBlur = (segmentId: string, field: "startTime" | "endTime", value: string) => {
+    const parsed = parseTimeInput(value);
+    if (parsed) {
+      onUpdateSegment(dayEntry.dateString, segmentId, { [field]: parsed });
     }
   };
 
@@ -145,9 +182,10 @@ export function TimesheetRow({
             <div className="flex items-center gap-1">
               <Input
                 type="text"
-                placeholder="00:00"
+                placeholder="0900"
                 value={segment.startTime}
                 onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { startTime: e.target.value })}
+                onBlur={(e) => handleTimeBlur(segment.id, "startTime", e.target.value)}
                 className="w-20 h-9 text-sm"
               />
               <Button
@@ -164,9 +202,10 @@ export function TimesheetRow({
             <div className="flex items-center gap-1">
               <Input
                 type="text"
-                placeholder="00:00"
+                placeholder="0500"
                 value={segment.endTime}
                 onChange={(e) => onUpdateSegment(dayEntry.dateString, segment.id, { endTime: e.target.value })}
+                onBlur={(e) => handleTimeBlur(segment.id, "endTime", e.target.value)}
                 className="w-20 h-9 text-sm"
               />
               <Button
@@ -179,22 +218,29 @@ export function TimesheetRow({
               </Button>
             </div>
 
-            {/* Work Type Pills */}
-            <div className="flex gap-1 flex-1 flex-wrap">
-              {WORK_TYPES.map((type) => (
-                <button
-                  key={type.id}
-                  onClick={() => handleWorkTypeClick(segment.id, type.id, segment.workType)}
-                  className={cn(
-                    "px-2 py-1 text-xs font-medium rounded-full transition-all whitespace-nowrap",
-                    segment.workType === type.id
-                      ? `${type.color} text-white shadow-sm`
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
-                >
-                  {type.label}
-                </button>
-              ))}
+            {/* Work Type Dropdown */}
+            <div className="w-40">
+              <Select
+                value={segment.workType || "none"}
+                onValueChange={(value) => handleWorkTypeChange(segment.id, value === "none" ? "" : value)}
+              >
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  <SelectItem value="none">
+                    <span className="text-muted-foreground">None</span>
+                  </SelectItem>
+                  {WORK_TYPES.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", type.color)} />
+                        {type.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Hours display - only on first segment */}
