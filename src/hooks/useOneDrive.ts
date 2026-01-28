@@ -43,6 +43,7 @@ export function useOneDrive() {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<OneDriveUser | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [tokenRecordId, setTokenRecordId] = useState<string | null>(null);
   const { toast } = useToast();
   const { user: authUser } = useAuth();
 
@@ -78,12 +79,16 @@ export function useOneDrive() {
         setIsConnected(false);
         setTokens(null);
         setUser(null);
+        setTokenRecordId(null);
         return;
       }
 
       if (data) {
         const record = data as CompanyTokenRecord;
         const expiresAt = new Date(record.expires_at).getTime();
+        
+        // Cache the record ID immediately
+        setTokenRecordId(record.id);
         
         // Check if token is expired
         if (expiresAt < Date.now()) {
@@ -211,24 +216,18 @@ export function useOneDrive() {
     }
   }, [user, saveTokensToDatabase]);
 
+
   const getValidToken = useCallback(async (): Promise<string | null> => {
     if (!tokens) return null;
 
     // Check if token needs refresh (5 min buffer)
     if (tokens.expiresAt < Date.now() + 300000) {
-      // Get record ID for update
-      const { data } = await supabase
-        .from('onedrive_company_tokens')
-        .select('id')
-        .limit(1)
-        .single();
-      
-      const refreshed = await refreshAccessToken(tokens.refreshToken, data?.id);
+      const refreshed = await refreshAccessToken(tokens.refreshToken, tokenRecordId || undefined);
       return refreshed?.accessToken || null;
     }
 
     return tokens.accessToken;
-  }, [tokens, refreshAccessToken]);
+  }, [tokens, refreshAccessToken, tokenRecordId]);
 
   const connect = useCallback(async () => {
     if (!canManage) {
