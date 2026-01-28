@@ -77,14 +77,15 @@ export default function Timesheet() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Week ending date (Saturday)
+  // Week ending date (Sunday) - week runs Monday-Sunday
   const [weekEndingDate, setWeekEndingDate] = useState<Date>(() => {
     const today = new Date();
     const dayOfWeek = getDay(today);
-    const daysUntilSaturday = dayOfWeek === 6 ? 0 : (6 - dayOfWeek + 7) % 7;
-    const saturday = new Date(today);
-    saturday.setDate(today.getDate() + daysUntilSaturday);
-    return saturday;
+    // Sunday = 0, so if today is Sunday, daysUntilSunday = 0, otherwise calculate
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() + daysUntilSunday);
+    return sunday;
   });
 
   // Local state for entries (for fast editing)
@@ -94,9 +95,9 @@ export default function Timesheet() {
   const [timesheetStatus, setTimesheetStatus] = useState<"draft" | "submitted">("draft");
   const [showResubmitDialog, setShowResubmitDialog] = useState(false);
 
-  // Calculate week range
-  const weekStart = startOfWeek(weekEndingDate, { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(weekEndingDate, { weekStartsOn: 0 });
+  // Calculate week range (Monday-Sunday)
+  const weekStart = startOfWeek(weekEndingDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(weekEndingDate, { weekStartsOn: 1 });
   const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
   // Fetch entries from database
@@ -134,68 +135,56 @@ export default function Timesheet() {
     },
   });
 
+  // Key for tracking week changes
+  const weekKey = daysInWeek.map(d => format(d, "yyyy-MM-dd")).join(",");
+
   // Initialize local entries from database
   useMemo(() => {
-    if (dbEntries.length === 0 && Object.keys(localEntries).length === 0) {
-      // Initialize empty entries for each day
-      const initial: Record<string, DayEntry> = {};
-      daysInWeek.forEach((day) => {
-        const dateString = format(day, "yyyy-MM-dd");
-        initial[dateString] = {
-          date: day,
-          dateString,
-          segments: [createEmptySegment()],
-          isSelected: false,
-        };
-      });
-      setLocalEntries(initial);
-    } else if (dbEntries.length > 0) {
-      // Convert database entries to local format
-      const converted: Record<string, DayEntry> = {};
-      
-      // Initialize all days first
-      daysInWeek.forEach((day) => {
-        const dateString = format(day, "yyyy-MM-dd");
-        converted[dateString] = {
-          date: day,
-          dateString,
-          segments: [],
-          isSelected: selectedDays.has(dateString),
-        };
-      });
+    // Convert database entries to local format
+    const converted: Record<string, DayEntry> = {};
+    
+    // Initialize all days first
+    daysInWeek.forEach((day) => {
+      const dateString = format(day, "yyyy-MM-dd");
+      converted[dateString] = {
+        date: day,
+        dateString,
+        segments: [],
+        isSelected: selectedDays.has(dateString),
+      };
+    });
 
-      // Add entries from database
-      dbEntries.forEach((entry) => {
-        const dateString = entry.work_date;
-        if (converted[dateString]) {
-          // Parse start time to determine AM/PM
-          const startHour = entry.start_time ? parseInt(entry.start_time.split(":")[0]) : 9;
-          const endHour = entry.end_time ? parseInt(entry.end_time.split(":")[0]) : 17;
-          
-          converted[dateString].segments.push({
-            id: entry.id,
-            startTime: entry.start_time ? formatTo12Hour(entry.start_time) : "",
-            endTime: entry.end_time ? formatTo12Hour(entry.end_time) : "",
-            startPeriod: startHour >= 12 ? "PM" : "AM",
-            endPeriod: endHour >= 12 ? "PM" : "AM",
-            workType: entry.client_name || "",
-            autoLunch: (entry.break_minutes || 0) > 0,
-            lunchMinutes: entry.break_minutes || 0,
-            notes: entry.notes || "",
-          });
-        }
-      });
+    // Add entries from database
+    dbEntries.forEach((entry) => {
+      const dateString = entry.work_date;
+      if (converted[dateString]) {
+        // Parse start time to determine AM/PM
+        const startHour = entry.start_time ? parseInt(entry.start_time.split(":")[0]) : 9;
+        const endHour = entry.end_time ? parseInt(entry.end_time.split(":")[0]) : 17;
+        
+        converted[dateString].segments.push({
+          id: entry.id,
+          startTime: entry.start_time ? formatTo12Hour(entry.start_time) : "",
+          endTime: entry.end_time ? formatTo12Hour(entry.end_time) : "",
+          startPeriod: startHour >= 12 ? "PM" : "AM",
+          endPeriod: endHour >= 12 ? "PM" : "AM",
+          workType: entry.client_name || "",
+          autoLunch: (entry.break_minutes || 0) > 0,
+          lunchMinutes: entry.break_minutes || 0,
+          notes: entry.notes || "",
+        });
+      }
+    });
 
-      // Ensure each day has at least one segment
-      Object.keys(converted).forEach((dateString) => {
-        if (converted[dateString].segments.length === 0) {
-          converted[dateString].segments.push(createEmptySegment());
-        }
-      });
+    // Ensure each day has at least one segment
+    Object.keys(converted).forEach((dateString) => {
+      if (converted[dateString].segments.length === 0) {
+        converted[dateString].segments.push(createEmptySegment());
+      }
+    });
 
-      setLocalEntries(converted);
-    }
-  }, [dbEntries, daysInWeek.map(d => format(d, "yyyy-MM-dd")).join(",")]);
+    setLocalEntries(converted);
+  }, [dbEntries, weekKey, isLoading]);
 
   // Helper to convert 24h to 12h format
   function formatTo12Hour(time: string): string {

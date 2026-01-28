@@ -84,8 +84,9 @@ export default function TimesheetSummary() {
         : subWeeks(base, Math.abs(selectedWeekOffset));
   }, [selectedWeekOffset]);
 
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 0 });
+  // Week runs Monday-Sunday
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
   const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
@@ -137,16 +138,23 @@ export default function TimesheetSummary() {
       });
     });
 
-    // Aggregate entries
+    // Aggregate entries by user
+    const entriesByUser = new Map<string, TimesheetEntry[]>();
     entries.forEach((entry) => {
-      const summary = summaryMap.get(entry.user_id);
+      const userEntries = entriesByUser.get(entry.user_id) || [];
+      userEntries.push(entry);
+      entriesByUser.set(entry.user_id, userEntries);
+    });
+
+    // Process each user's entries
+    entriesByUser.forEach((userEntries, userId) => {
+      const summary = summaryMap.get(userId);
       if (summary) {
-        summary.totalHours += Number(entry.hours_worked) || 0;
-        summary.entries.push(entry);
-        // If any entry is submitted, consider the week submitted
-        if (entry.status === "submitted") {
-          summary.status = "submitted";
-        }
+        summary.entries = userEntries;
+        summary.totalHours = userEntries.reduce((sum, e) => sum + (Number(e.hours_worked) || 0), 0);
+        // Check if ALL entries are submitted (not just any)
+        const allSubmitted = userEntries.length > 0 && userEntries.every(e => e.status === "submitted");
+        summary.status = allSubmitted ? "submitted" : "unsubmitted";
       }
     });
 
@@ -185,8 +193,8 @@ export default function TimesheetSummary() {
     const weeks: { weekStart: Date; weekEnd: Date; entries: TimesheetEntry[]; totalHours: number }[] = [];
     
     for (let i = 1; i <= 4; i++) {
-      const ws = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 0 });
-      const we = endOfWeek(subWeeks(new Date(), i), { weekStartsOn: 0 });
+      const ws = startOfWeek(subWeeks(new Date(), i), { weekStartsOn: 1 });
+      const we = endOfWeek(subWeeks(new Date(), i), { weekStartsOn: 1 });
       const weekEntries = historyEntries.filter((e) => {
         const date = parseISO(e.work_date);
         return isWithinInterval(date, { start: ws, end: we });
