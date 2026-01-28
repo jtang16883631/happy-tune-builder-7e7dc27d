@@ -236,8 +236,68 @@ export function useScheduleEventSections(scheduleJobId: string | undefined) {
   });
 }
 
+// Helper function to sync schedule to Google Docs
+async function syncScheduleToGoogleDocs(jobDate: string, teamMembers: TeamMember[]) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.log('No session, skipping Google Doc sync');
+      return;
+    }
+
+    // Get the week containing the job date
+    const date = parseISO(jobDate);
+    const startOfWeek = new Date(date);
+    startOfWeek.setDate(date.getDate() - date.getDay()); // Start of week (Sunday)
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6); // End of week (Saturday)
+
+    const startStr = format(startOfWeek, 'yyyy-MM-dd');
+    const endStr = format(endOfWeek, 'yyyy-MM-dd');
+
+    // Fetch all events for that week
+    const { data: weekEvents, error: fetchError } = await supabase
+      .from('scheduled_jobs')
+      .select('*')
+      .gte('job_date', startStr)
+      .lte('job_date', endStr)
+      .order('job_date', { ascending: true })
+      .order('start_time', { ascending: true });
+
+    if (fetchError) {
+      console.error('Error fetching week events for sync:', fetchError);
+      return;
+    }
+
+    // Map team member IDs to names
+    const eventsWithNames = (weekEvents || []).map(event => ({
+      ...event,
+      team_member_names: (event.team_members || [])
+        .map((id: string) => teamMembers.find(m => m.id === id)?.name)
+        .filter(Boolean) as string[],
+    }));
+
+    // Call the export function
+    const { error } = await supabase.functions.invoke('export-schedule-to-docs', {
+      body: {
+        startDate: startStr,
+        endDate: endStr,
+        events: eventsWithNames,
+      }
+    });
+
+    if (error) {
+      console.error('Google Doc sync error:', error);
+    } else {
+      console.log('Schedule synced to Google Docs');
+    }
+  } catch (error) {
+    console.error('Error syncing to Google Docs:', error);
+  }
+}
+
 // Create/Update event mutation with optional sections
-export function useScheduleEventMutation() {
+export function useScheduleEventMutation(teamMembers: TeamMember[] = []) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -303,14 +363,22 @@ export function useScheduleEventMutation() {
           payload.job_date
         );
       }
+
+      // Return the job date for use in onSuccess
+      return { jobDate: payload.job_date };
     },
-    onSuccess: () => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['schedule-events'] });
       queryClient.invalidateQueries({ queryKey: ['schedule-events-all'] });
       queryClient.invalidateQueries({ queryKey: ['scheduled-jobs'] });
       queryClient.invalidateQueries({ queryKey: ['live-tracker-jobs'] });
       queryClient.invalidateQueries({ queryKey: ['schedule-event-sections'] });
       toast({ title: 'Event saved successfully' });
+
+      // Sync to Google Docs in background
+      if (result?.jobDate && teamMembers.length > 0) {
+        syncScheduleToGoogleDocs(result.jobDate, teamMembers);
+      }
     },
     onError: (error) => {
       console.error('Save error:', error);
