@@ -13,27 +13,23 @@ import {
   startOfWeek,
   endOfWeek,
   eachDayOfInterval,
-  isSameDay,
   addWeeks,
   subWeeks,
   getDay,
-  subDays,
 } from "date-fns";
 import {
   CalendarIcon,
   ChevronLeft,
   ChevronRight,
   Copy,
-  CopyCheck,
   Send,
   Loader2,
 } from "lucide-react";
 import { QuickTemplateBar, QuickTemplate, QUICK_TEMPLATES } from "@/components/timesheet/QuickTemplateBar";
-import { TimesheetRow, DayEntry, TimesheetSegment } from "@/components/timesheet/TimesheetRow";
+import { TimesheetRow, DayEntry, TimesheetSegment, WORK_TYPES } from "@/components/timesheet/TimesheetRow";
 import { BulkApplyPanel } from "@/components/timesheet/BulkApplyPanel";
 import { WeeklyTotalBar } from "@/components/timesheet/WeeklyTotalBar";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 
 interface TimesheetEntry {
   id: string;
@@ -51,6 +47,18 @@ interface TimesheetEntry {
 }
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const createEmptySegment = (): TimesheetSegment => ({
+  id: crypto.randomUUID(),
+  startTime: "",
+  endTime: "",
+  startPeriod: "AM",
+  endPeriod: "PM",
+  workType: "",
+  autoLunch: false,
+  lunchMinutes: 0,
+  notes: "",
+});
 
 export default function Timesheet() {
   const { user } = useAuth();
@@ -122,15 +130,7 @@ export default function Timesheet() {
         initial[dateString] = {
           date: day,
           dateString,
-          segments: [{
-            id: crypto.randomUUID(),
-            startTime: "",
-            endTime: "",
-            workType: "",
-            autoLunch: false,
-            lunchMinutes: 0,
-            notes: "",
-          }],
+          segments: [createEmptySegment()],
           isSelected: false,
         };
       });
@@ -154,10 +154,16 @@ export default function Timesheet() {
       dbEntries.forEach((entry) => {
         const dateString = entry.work_date;
         if (converted[dateString]) {
+          // Parse start time to determine AM/PM
+          const startHour = entry.start_time ? parseInt(entry.start_time.split(":")[0]) : 9;
+          const endHour = entry.end_time ? parseInt(entry.end_time.split(":")[0]) : 17;
+          
           converted[dateString].segments.push({
             id: entry.id,
-            startTime: entry.start_time || "",
-            endTime: entry.end_time || "",
+            startTime: entry.start_time ? formatTo12Hour(entry.start_time) : "",
+            endTime: entry.end_time ? formatTo12Hour(entry.end_time) : "",
+            startPeriod: startHour >= 12 ? "PM" : "AM",
+            endPeriod: endHour >= 12 ? "PM" : "AM",
             workType: entry.client_name || "",
             autoLunch: (entry.break_minutes || 0) > 0,
             lunchMinutes: entry.break_minutes || 0,
@@ -169,15 +175,7 @@ export default function Timesheet() {
       // Ensure each day has at least one segment
       Object.keys(converted).forEach((dateString) => {
         if (converted[dateString].segments.length === 0) {
-          converted[dateString].segments.push({
-            id: crypto.randomUUID(),
-            startTime: "",
-            endTime: "",
-            workType: "",
-            autoLunch: false,
-            lunchMinutes: 0,
-            notes: "",
-          });
+          converted[dateString].segments.push(createEmptySegment());
         }
       });
 
@@ -185,12 +183,33 @@ export default function Timesheet() {
     }
   }, [dbEntries, daysInWeek.map(d => format(d, "yyyy-MM-dd")).join(",")]);
 
-  // Calculate hours
+  // Helper to convert 24h to 12h format
+  function formatTo12Hour(time: string): string {
+    const [hours, minutes] = time.split(":").map(Number);
+    const h = hours % 12 || 12;
+    return `${h.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+  }
+
+  // Calculate hours - only count office and hospital
   const calculateSegmentHours = (segment: TimesheetSegment) => {
     if (!segment.startTime || !segment.endTime) return 0;
-    const [startH, startM] = segment.startTime.split(":").map(Number);
-    const [endH, endM] = segment.endTime.split(":").map(Number);
-    const totalMinutes = (endH * 60 + endM) - (startH * 60 + startM) - (segment.autoLunch ? segment.lunchMinutes : 0);
+    
+    const workTypeConfig = WORK_TYPES.find(t => t.id === segment.workType);
+    if (!workTypeConfig?.countsHours) return 0;
+    
+    // Parse time with AM/PM
+    let startHour = parseInt(segment.startTime.split(":")[0]);
+    const startMin = parseInt(segment.startTime.split(":")[1]) || 0;
+    let endHour = parseInt(segment.endTime.split(":")[0]);
+    const endMin = parseInt(segment.endTime.split(":")[1]) || 0;
+    
+    // Convert to 24-hour format
+    if (segment.startPeriod === "PM" && startHour !== 12) startHour += 12;
+    if (segment.startPeriod === "AM" && startHour === 12) startHour = 0;
+    if (segment.endPeriod === "PM" && endHour !== 12) endHour += 12;
+    if (segment.endPeriod === "AM" && endHour === 12) endHour = 0;
+    
+    const totalMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
     return Math.max(0, totalMinutes / 60);
   };
 
@@ -232,25 +251,25 @@ export default function Timesheet() {
     }));
   }, []);
 
-  const handleAddSegment = useCallback((dateString: string) => {
+  const handleAddSegment = useCallback((dateString: string, workType?: string) => {
     setLocalEntries((prev) => {
       const lastSegment = prev[dateString].segments[prev[dateString].segments.length - 1];
+      const newSegment: TimesheetSegment = {
+        id: crypto.randomUUID(),
+        startTime: lastSegment.endTime || "",
+        endTime: "",
+        startPeriod: lastSegment.endPeriod || "AM",
+        endPeriod: "PM",
+        workType: workType || lastSegment.workType || "",
+        autoLunch: false,
+        lunchMinutes: 0,
+        notes: "",
+      };
       return {
         ...prev,
         [dateString]: {
           ...prev[dateString],
-          segments: [
-            ...prev[dateString].segments,
-            {
-              id: crypto.randomUUID(),
-              startTime: lastSegment.endTime || "",
-              endTime: "",
-              workType: lastSegment.workType || "",
-              autoLunch: false,
-              lunchMinutes: 0,
-              notes: "",
-            },
-          ],
+          segments: [...prev[dateString].segments, newSegment],
         },
       };
     });
@@ -266,22 +285,51 @@ export default function Timesheet() {
     }));
   }, []);
 
+  const handleClearDay = useCallback((dateString: string) => {
+    setLocalEntries((prev) => ({
+      ...prev,
+      [dateString]: {
+        ...prev[dateString],
+        segments: [createEmptySegment()],
+      },
+    }));
+  }, []);
+
   const handleApplyTemplate = useCallback((template: QuickTemplate) => {
     setLocalEntries((prev) => {
       const updated = { ...prev };
       selectedDays.forEach((dateString) => {
         if (updated[dateString]) {
+          const segments: TimesheetSegment[] = [{
+            id: crypto.randomUUID(),
+            startTime: template.startTime,
+            endTime: template.endTime,
+            startPeriod: template.startPeriod,
+            endPeriod: template.endPeriod,
+            workType: template.workType,
+            autoLunch: false,
+            lunchMinutes: 0,
+            notes: "",
+          }];
+          
+          // Add lunch segment for office
+          if (template.addLunchSegment) {
+            segments.push({
+              id: crypto.randomUUID(),
+              startTime: "",
+              endTime: "",
+              startPeriod: "PM",
+              endPeriod: "PM",
+              workType: "lunch",
+              autoLunch: false,
+              lunchMinutes: 0,
+              notes: "",
+            });
+          }
+          
           updated[dateString] = {
             ...updated[dateString],
-            segments: [{
-              id: crypto.randomUUID(),
-              startTime: template.startTime,
-              endTime: template.endTime,
-              workType: template.workType,
-              autoLunch: template.autoLunch,
-              lunchMinutes: template.lunchMinutes,
-              notes: "",
-            }],
+            segments,
           };
         }
       });
@@ -304,17 +352,36 @@ export default function Timesheet() {
       const updated = { ...prev };
       selectedDays.forEach((dateString) => {
         if (updated[dateString]) {
+          const segments: TimesheetSegment[] = [{
+            id: crypto.randomUUID(),
+            startTime: settings.startTime,
+            endTime: settings.endTime,
+            startPeriod: "AM",
+            endPeriod: "PM",
+            workType: settings.workType,
+            autoLunch: settings.autoLunch,
+            lunchMinutes: settings.lunchMinutes,
+            notes: "",
+          }];
+          
+          // Add lunch segment for office
+          if (settings.workType === "office") {
+            segments.push({
+              id: crypto.randomUUID(),
+              startTime: "",
+              endTime: "",
+              startPeriod: "PM",
+              endPeriod: "PM",
+              workType: "lunch",
+              autoLunch: false,
+              lunchMinutes: 0,
+              notes: "",
+            });
+          }
+          
           updated[dateString] = {
             ...updated[dateString],
-            segments: [{
-              id: crypto.randomUUID(),
-              startTime: settings.startTime,
-              endTime: settings.endTime,
-              workType: settings.workType,
-              autoLunch: settings.autoLunch,
-              lunchMinutes: settings.lunchMinutes,
-              notes: "",
-            }],
+            segments,
           };
         }
       });
@@ -370,15 +437,22 @@ export default function Timesheet() {
         if (lastWeekDayEntries && lastWeekDayEntries.length > 0) {
           updated[dateString] = {
             ...updated[dateString],
-            segments: lastWeekDayEntries.map((entry) => ({
-              id: crypto.randomUUID(),
-              startTime: entry.start_time || "",
-              endTime: entry.end_time || "",
-              workType: entry.client_name || "",
-              autoLunch: (entry.break_minutes || 0) > 0,
-              lunchMinutes: entry.break_minutes || 0,
-              notes: entry.notes || "",
-            })),
+            segments: lastWeekDayEntries.map((entry) => {
+              const startHour = entry.start_time ? parseInt(entry.start_time.split(":")[0]) : 9;
+              const endHour = entry.end_time ? parseInt(entry.end_time.split(":")[0]) : 17;
+              
+              return {
+                id: crypto.randomUUID(),
+                startTime: entry.start_time ? formatTo12Hour(entry.start_time) : "",
+                endTime: entry.end_time ? formatTo12Hour(entry.end_time) : "",
+                startPeriod: startHour >= 12 ? "PM" as const : "AM" as const,
+                endPeriod: endHour >= 12 ? "PM" as const : "AM" as const,
+                workType: entry.client_name || "",
+                autoLunch: (entry.break_minutes || 0) > 0,
+                lunchMinutes: entry.break_minutes || 0,
+                notes: entry.notes || "",
+              };
+            }),
           };
         }
       });
@@ -392,37 +466,15 @@ export default function Timesheet() {
     });
   }, [lastWeekEntries, daysInWeek, toast]);
 
-  const handleCopyYesterday = useCallback(() => {
-    const yesterday = subDays(new Date(), 1);
-    const yesterdayString = format(yesterday, "yyyy-MM-dd");
-    const todayString = format(new Date(), "yyyy-MM-dd");
-
-    const yesterdayEntry = localEntries[yesterdayString];
-    if (!yesterdayEntry || !yesterdayEntry.segments.some(s => s.startTime && s.endTime)) {
-      toast({
-        title: "No Data",
-        description: "No entries found from yesterday to copy",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLocalEntries((prev) => ({
-      ...prev,
-      [todayString]: {
-        ...prev[todayString],
-        segments: yesterdayEntry.segments.map((seg) => ({
-          ...seg,
-          id: crypto.randomUUID(),
-        })),
-      },
-    }));
-
-    toast({
-      title: "Copied",
-      description: "Yesterday's entries copied to today",
-    });
-  }, [localEntries, toast]);
+  // Convert 12h to 24h for database storage
+  const convertTo24Hour = (time: string, period: "AM" | "PM"): string => {
+    if (!time) return "";
+    const [hours, minutes] = time.split(":").map(Number);
+    let h = hours;
+    if (period === "PM" && h !== 12) h += 12;
+    if (period === "AM" && h === 12) h = 0;
+    return `${h.toString().padStart(2, "0")}:${(minutes || 0).toString().padStart(2, "0")}`;
+  };
 
   // Save mutation
   const saveMutation = useMutation({
@@ -443,13 +495,16 @@ export default function Timesheet() {
       const entries: any[] = [];
       Object.values(localEntries).forEach((day) => {
         day.segments.forEach((seg) => {
-          if (seg.startTime && seg.endTime) {
+          if (seg.workType) { // Save if has work type (even without time for status types)
+            const start24 = convertTo24Hour(seg.startTime, seg.startPeriod);
+            const end24 = convertTo24Hour(seg.endTime, seg.endPeriod);
             const hours = calculateSegmentHours(seg);
+            
             entries.push({
               user_id: user.id,
               work_date: day.dateString,
-              start_time: seg.startTime,
-              end_time: seg.endTime,
+              start_time: start24 || null,
+              end_time: end24 || null,
               hours_worked: hours,
               break_minutes: seg.autoLunch ? seg.lunchMinutes : 0,
               client_name: seg.workType || null,
@@ -521,10 +576,6 @@ export default function Timesheet() {
               <Copy className="h-4 w-4" />
               Copy Last Week
             </Button>
-            <Button variant="outline" size="sm" onClick={handleCopyYesterday} className="gap-2">
-              <CopyCheck className="h-4 w-4" />
-              Copy Yesterday
-            </Button>
             <Button 
               onClick={handleSubmit} 
               disabled={saveMutation.isPending}
@@ -579,15 +630,14 @@ export default function Timesheet() {
         {/* Timesheet Table */}
         <Card>
           <CardHeader className="border-b py-3 px-4">
-            <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
               <div className="w-5" />
-              <div className="w-28">Day</div>
-              <div className="w-28">Start</div>
-              <div className="w-28">End</div>
+              <div className="w-24">Day</div>
+              <div className="w-32">Start</div>
+              <div className="w-32">End</div>
               <div className="flex-1">Work Type</div>
-              <div className="w-32">Lunch</div>
-              <div className="w-16 text-right">Hours</div>
-              <div className="w-24" />
+              <div className="w-14 text-right">Hours</div>
+              <div className="w-28" />
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -607,6 +657,7 @@ export default function Timesheet() {
                   onUpdateSegment={handleUpdateSegment}
                   onAddSegment={handleAddSegment}
                   onDeleteSegment={handleDeleteSegment}
+                  onClearDay={handleClearDay}
                 />
               );
             })}
