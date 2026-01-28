@@ -1,7 +1,100 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { format, parseISO, isWithinInterval, eachDayOfInterval } from 'date-fns';
+import { format, parseISO, isWithinInterval } from 'date-fns';
+
+// Helper function to create OneDrive folder for a work event
+async function createOneDriveFolderForEvent(invoiceNumber: string, clientName: string, jobDate: string) {
+  try {
+    // Get company OneDrive tokens
+    const { data: tokenData, error: tokenError } = await supabase
+      .from('onedrive_company_tokens')
+      .select('access_token')
+      .single();
+
+    if (tokenError || !tokenData?.access_token) {
+      console.log('OneDrive not connected, skipping folder creation');
+      return;
+    }
+
+    const accessToken = tokenData.access_token;
+    const date = parseISO(jobDate);
+    const year = format(date, 'yyyy');
+    const monthNumber = format(date, 'M');
+    const monthName = format(date, 'MMMM');
+    const monthFolder = `${monthNumber}-${monthName} ${year}`;
+    const folderName = `${invoiceNumber} ${clientName}`.trim();
+
+    // Step 1: Find or create "MIS Client Files" folder
+    let misClientFilesId = await findOrCreateFolder(accessToken, null, 'MIS Client Files');
+    if (!misClientFilesId) return;
+
+    // Step 2: Find or create year folder (e.g., "2026")
+    let yearFolderId = await findOrCreateFolder(accessToken, misClientFilesId, year);
+    if (!yearFolderId) return;
+
+    // Step 3: Find or create month folder (e.g., "1-January 2026")
+    let monthFolderId = await findOrCreateFolder(accessToken, yearFolderId, monthFolder);
+    if (!monthFolderId) return;
+
+    // Step 4: Create the job folder (e.g., "INV12345 Facility Name")
+    await findOrCreateFolder(accessToken, monthFolderId, folderName);
+
+    console.log(`Successfully created OneDrive folder: MIS Client Files/${year}/${monthFolder}/${folderName}`);
+    toast({ title: 'OneDrive folder created', description: `Created folder: ${folderName}` });
+  } catch (error) {
+    console.error('Error creating OneDrive folder:', error);
+    // Don't show error toast as this is a background operation
+  }
+}
+
+// Helper to find or create a folder
+async function findOrCreateFolder(accessToken: string, parentId: string | null, folderName: string): Promise<string | null> {
+  try {
+    // First, list contents to check if folder exists
+    const { data: listData, error: listError } = await supabase.functions.invoke('onedrive-api', {
+      body: {
+        action: 'list-files',
+        accessToken,
+        folderId: parentId,
+      }
+    });
+
+    if (listError) {
+      console.error('Error listing OneDrive folder:', listError);
+      return null;
+    }
+
+    // Check if folder already exists
+    const existingFolder = listData?.value?.find(
+      (item: any) => item.folder && item.name.toLowerCase() === folderName.toLowerCase()
+    );
+
+    if (existingFolder) {
+      return existingFolder.id;
+    }
+
+    // Folder doesn't exist, create it
+    const { data: createData, error: createError } = await supabase.functions.invoke('onedrive-api', {
+      body: {
+        action: 'create-folder',
+        accessToken,
+        folderId: parentId,
+        fileName: folderName,
+      }
+    });
+
+    if (createError || createData?.error) {
+      console.error('Error creating OneDrive folder:', createError || createData?.error);
+      return null;
+    }
+
+    return createData?.id || null;
+  } catch (error) {
+    console.error('Error in findOrCreateFolder:', error);
+    return null;
+  }
+}
 
 export type ScheduleEventType = 'work' | 'travel' | 'off' | 'note';
 
@@ -157,6 +250,7 @@ export function useScheduleEventMutation() {
       }
 
       let eventId = id;
+      const isNewEvent = !id;
 
       if (id) {
         const { error } = await supabase
@@ -198,6 +292,16 @@ export function useScheduleEventMutation() {
         if (sectError) {
           console.error('Error inserting sections:', sectError);
         }
+      }
+
+      // Create OneDrive folder for new work events with invoice number
+      if (isNewEvent && payload.event_type === 'work' && payload.invoice_number && payload.client_name && payload.job_date) {
+        // Run folder creation in background (don't await)
+        createOneDriveFolderForEvent(
+          payload.invoice_number,
+          payload.client_name,
+          payload.job_date
+        );
       }
     },
     onSuccess: () => {
