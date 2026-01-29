@@ -9,6 +9,7 @@ import {
   LiveTrackerJob, 
   JobWorkflowStage 
 } from '@/hooks/useLiveTracker';
+import { useGoogleSheetsSync } from '@/hooks/useGoogleSheetsSync';
 import { LiveTrackerKanban } from '@/components/live-tracker/LiveTrackerKanban';
 import { LiveTrackerTable } from '@/components/live-tracker/LiveTrackerTable';
 import { LiveTrackerJobDialog } from '@/components/live-tracker/LiveTrackerJobDialog';
@@ -21,6 +22,10 @@ import {
   Loader2,
   AlertTriangle,
   RefreshCw,
+  FileSpreadsheet,
+  ExternalLink,
+  CloudOff,
+  Check,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -33,6 +38,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
 
 type ViewMode = 'kanban' | 'table';
 
@@ -54,6 +67,16 @@ export default function LiveTracker() {
     deleteJob,
     isJobOverdue,
   } = useLiveTracker();
+
+  const {
+    sheetConfig,
+    isConnected,
+    initSheet,
+    pushToSheet,
+    pullFromSheet,
+    syncSheet,
+    isSyncing,
+  } = useGoogleSheetsSync();
 
   // Filter jobs by search query
   const filterJobs = useCallback((jobList: LiveTrackerJob[]) => {
@@ -152,6 +175,68 @@ export default function LiveTracker() {
                 <span>{overdueCount} overdue</span>
               </div>
             )}
+
+            {/* Google Sheets Sync */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  {isSyncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4" />
+                  )}
+                  <span className="hidden sm:inline">Sheets</span>
+                  {isConnected && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-primary/10 text-primary">
+                      <Check className="h-3 w-3" />
+                    </Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {isConnected ? (
+                  <>
+                    <DropdownMenuItem onClick={() => syncSheet.mutate()} disabled={isSyncing}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Sync Now
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => pushToSheet.mutate()} disabled={isSyncing}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Push to Sheet
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => pullFromSheet.mutate()} disabled={isSyncing}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Pull from Sheet
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => sheetConfig?.spreadsheet_url && window.open(sheetConfig.spreadsheet_url, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open in Google Sheets
+                    </DropdownMenuItem>
+                    {sheetConfig?.last_sync_at && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          Last sync: {new Date(sheetConfig.last_sync_at).toLocaleString()}
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <DropdownMenuItem onClick={() => initSheet.mutate()} disabled={initSheet.isPending}>
+                    {initSheet.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    )}
+                    Connect to Google Sheets
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button onClick={handleAddNew}>
               <Plus className="h-4 w-4 mr-2" />
               Add Job

@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.create-room]
 verify_jwt = false
+
+[functions.live-tracker-sheets-sync]
+verify_jwt = false

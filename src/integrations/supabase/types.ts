@@ -386,6 +386,7 @@ export type Database = {
           promise_invoice_number: string | null
           ptf_sum: string | null
           schedule_job_id: string | null
+          sheet_row_id: number | null
           stage: Database["public"]["Enums"]["job_workflow_stage"]
           stage_changed_at: string | null
           template_done: string | null
@@ -413,6 +414,7 @@ export type Database = {
           promise_invoice_number?: string | null
           ptf_sum?: string | null
           schedule_job_id?: string | null
+          sheet_row_id?: number | null
           stage?: Database["public"]["Enums"]["job_workflow_stage"]
           stage_changed_at?: string | null
           template_done?: string | null
@@ -440,6 +442,7 @@ export type Database = {
           promise_invoice_number?: string | null
           ptf_sum?: string | null
           schedule_job_id?: string | null
+          sheet_row_id?: number | null
           stage?: Database["public"]["Enums"]["job_workflow_stage"]
           stage_changed_at?: string | null
           template_done?: string | null
@@ -471,6 +474,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      live_tracker_sheet_config: {
+        Row: {
+          created_at: string
+          id: string
+          last_sync_at: string | null
+          spreadsheet_id: string
+          spreadsheet_url: string | null
+          sync_enabled: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_sync_at?: string | null
+          spreadsheet_id: string
+          spreadsheet_url?: string | null
+          sync_enabled?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_sync_at?: string | null
+          spreadsheet_id?: string
+          spreadsheet_url?: string | null
+          sync_enabled?: boolean | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       live_tracker_stage_history: {
         Row: {
