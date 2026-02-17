@@ -28,6 +28,8 @@ import {
   CheckCircle2,
   XCircle,
   Calendar,
+  RotateCcw,
+  MessageSquare,
 } from "lucide-react";
 import {
   startOfWeek,
@@ -39,6 +41,10 @@ import {
   isWithinInterval,
   eachDayOfInterval,
 } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TimesheetEntry {
   id: string;
@@ -73,6 +79,9 @@ export default function TimesheetSummary() {
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeSummary | null>(null);
   const [detailTab, setDetailTab] = useState<"current" | "history">("current");
+  const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { isOwner } = useAuth();
 
   // Calculate week dates based on offset
   const currentDate = useMemo(() => {
@@ -212,6 +221,36 @@ export default function TimesheetSummary() {
   const handleNextWeek = () => setSelectedWeekOffset((o) => o + 1);
   const handleCurrentWeek = () => setSelectedWeekOffset(0);
 
+  const handleRejectTimesheet = async (userId: string) => {
+    setRejectingUserId(userId);
+    try {
+      const { error } = await supabase
+        .from("timesheet_entries")
+        .update({ status: "pending" })
+        .eq("user_id", userId)
+        .gte("work_date", weekStartStr)
+        .lte("work_date", weekEndStr)
+        .eq("status", "submitted");
+
+      if (error) throw error;
+
+      toast.success("Timesheet returned for revision");
+      queryClient.invalidateQueries({ queryKey: ["timesheet-summary"] });
+      
+      // Update the selected employee status if viewing
+      if (selectedEmployee?.userId === userId) {
+        setSelectedEmployee((prev) =>
+          prev ? { ...prev, status: "unsubmitted" } : null
+        );
+      }
+    } catch (err) {
+      console.error("Error rejecting timesheet:", err);
+      toast.error("Failed to reject timesheet");
+    } finally {
+      setRejectingUserId(null);
+    }
+  };
+
   const daysOfWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
   return (
@@ -348,7 +387,19 @@ export default function TimesheetSummary() {
                             : "Unsubmitted"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right flex items-center justify-end gap-2">
+                        {isOwner && emp.status === "submitted" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleRejectTimesheet(emp.userId)}
+                            disabled={rejectingUserId === emp.userId}
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" />
+                            {rejectingUserId === emp.userId ? "Rejecting..." : "Reject"}
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -397,6 +448,7 @@ export default function TimesheetSummary() {
                     <TableHead>Date</TableHead>
                     <TableHead>Time</TableHead>
                     <TableHead>Client</TableHead>
+                    <TableHead>Notes</TableHead>
                     <TableHead className="text-right">Hours</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -417,6 +469,7 @@ export default function TimesheetSummary() {
                           <TableCell>{format(day, "EEE, MMM d")}</TableCell>
                           <TableCell>-</TableCell>
                           <TableCell>-</TableCell>
+                          <TableCell>-</TableCell>
                           <TableCell className="text-right">0h</TableCell>
                         </TableRow>
                       );
@@ -433,6 +486,25 @@ export default function TimesheetSummary() {
                             : "-"}
                         </TableCell>
                         <TableCell>{entry.client_name || "-"}</TableCell>
+                        <TableCell>
+                          {entry.notes ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center gap-1 text-muted-foreground cursor-help max-w-[150px] truncate">
+                                    <MessageSquare className="h-3 w-3 shrink-0" />
+                                    {entry.notes}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="max-w-xs">
+                                  <p className="text-sm">{entry.notes}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           {Number(entry.hours_worked).toFixed(1)}h
                         </TableCell>
