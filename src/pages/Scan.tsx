@@ -11,6 +11,7 @@ import { getCellValidationColor, getCellValidationClasses, applyValidationStyles
 import { applyExcelFormulas, applySummaryFormulas, COLUMN_INDICES, getColLetter } from '@/lib/excelFormulas';
 import { buildValidationData, createValidationWorksheet, addSummaryHyperlinks } from '@/lib/excelValidationTab';
 import { createStyledSummarySheet } from '@/lib/excelSummarySheet';
+import { injectImageIntoXlsx, fetchLogoImageData } from '@/lib/excelImageInject';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCloudTemplates, CloudTemplate, CloudSection, TemplateStatus } from '@/hooks/useCloudTemplates';
@@ -1515,8 +1516,20 @@ const Scan = () => {
       // Generate filename with template name and date
       const filename = `${selectedTemplate.name}_${dateStr}_scan.xlsx`;
 
-      // Download the file
-      XLSX.writeFile(workbook, filename);
+      // Inject logo into Summary sheet (index 0)
+      const logoData = await fetchLogoImageData();
+      if (logoData) {
+        const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = await injectImageIntoXlsx(xlsxBuffer, logoData, 0);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        XLSX.writeFile(workbook, filename);
+      }
       toast.success(`Exported ${sections.length} sections + Summary to Excel`);
     } catch (error) {
       console.error('Export error:', error);
@@ -1804,7 +1817,20 @@ const Scan = () => {
 
       const filename = `${selectedTemplate.name}_${dateStr}_merged_scan.xlsx`;
 
-      XLSX.writeFile(workbook, filename);
+      // Inject logo into Summary sheet (index 0)
+      const logoData = await fetchLogoImageData();
+      if (logoData) {
+        const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = await injectImageIntoXlsx(xlsxBuffer, logoData, 0);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        XLSX.writeFile(workbook, filename);
+      }
       toast.success(`Exported merged scans with Summary + Master to Excel`);
     } catch (error) {
       console.error('Export error:', error);
