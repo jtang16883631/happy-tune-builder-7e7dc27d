@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, MessageSquare, Trash2, X, ChevronDown, Clock, Briefcase, Building2, Utensils, Car, Home, MapPin, Palmtree, PartyPopper } from "lucide-react";
+import { Plus, MessageSquare, Trash2, X, ChevronDown, Clock, Briefcase, Building2, Utensils, Car, Home, MapPin, Palmtree, PartyPopper, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +38,7 @@ const WORK_TYPE_ICONS: Record<string, React.ReactNode> = {
   off_on_road: <MapPin className="h-5 w-5" />,
   vacation: <Palmtree className="h-5 w-5" />,
   company_holiday: <PartyPopper className="h-5 w-5" />,
+  available: <Check className="h-5 w-5" />,
 };
 
 // Work type descriptions
@@ -50,6 +51,7 @@ const WORK_TYPE_DESCRIPTIONS: Record<string, string> = {
   off_on_road: "Day off while traveling",
   vacation: "Paid vacation day",
   company_holiday: "Company holiday",
+  available: "Available for work",
 };
 
 // Parse flexible time input: "9", "900", "0900", "9:00", "09:00" → "HH:mm"

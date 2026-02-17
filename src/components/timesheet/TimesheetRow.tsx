@@ -37,6 +37,7 @@ export const WORK_TYPES = [
   { id: "off_on_road", label: "Off On Road", color: "bg-slate-500", countsHours: false },
   { id: "vacation", label: "Vacation", color: "bg-pink-500", countsHours: false },
   { id: "company_holiday", label: "Company Holiday", color: "bg-red-500", countsHours: false },
+  { id: "available", label: "Available", color: "bg-teal-500", countsHours: false },
 ];
 
 interface TimesheetRowProps {
