@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx-js-style';
 import { getCellValidationColor, getCellValidationClasses, applyValidationStylesToWorksheet } from '@/lib/cellValidation';
 import { applyExcelFormulas, applySummaryFormulas, COLUMN_INDICES, getColLetter } from '@/lib/excelFormulas';
 import { buildValidationData, createValidationWorksheet, addSummaryHyperlinks } from '@/lib/excelValidationTab';
+import { createStyledSummarySheet } from '@/lib/excelSummarySheet';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCloudTemplates, CloudTemplate, CloudSection, TemplateStatus } from '@/hooks/useCloudTemplates';
@@ -1481,43 +1482,18 @@ const Scan = () => {
         ? new Date(selectedTemplate.inv_date).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0];
       
-      // Build summary sheet content - values will be formulas referencing section sheets
-      const summaryRows: any[][] = [
-        // Header info
-        [selectedTemplate.name],
-        [selectedTemplate.facility_name || ''],
-        [dateStr],
-        [], // Empty row
-        // Section table headers
-        ['Sections', 'Scans', 'Value'],
-      ];
-      
-      // Add placeholder rows for each section (will be replaced by formulas)
-      sectionTotals.forEach(st => {
-        summaryRows.push([st.section, '', '']); // Placeholders for formula cells
-      });
-      
-      // Empty row before total
-      summaryRows.push([]);
-      // Grand total row (placeholders for formula cells)
-      summaryRows.push(['Total', '', '']);
-      
-      const summaryWorksheet = XLSX.utils.aoa_to_sheet(summaryRows);
-      
-      // Set column widths for summary
-      summaryWorksheet['!cols'] = [{ wch: 40 }, { wch: 10 }, { wch: 15 }];
-      
       // Get section sheet names for formula references
       const sectionSheetNames = sections.map(section => {
         let sheetName = section.full_section || section.sect || 'Sheet';
         return sheetName.replace(/[\\/*?[\]:]/g, '-').substring(0, 31);
       });
       
-      // Apply formulas to Summary sheet (start row 6 is first section row)
-      applySummaryFormulas(summaryWorksheet, sectionSheetNames, 6);
-      
-      // Add hyperlinks to section names in Summary
-      addSummaryHyperlinks(summaryWorksheet, sectionSheetNames, 6);
+      const summaryWorksheet = createStyledSummarySheet({
+        facilityName: selectedTemplate.facility_name || '',
+        templateName: selectedTemplate.name,
+        dateStr,
+        sectionSheetNames,
+      });
 
       // For "Export My Scans" - only include Summary and section sheets (no Master, no Validation)
       // Clear all sheets and rebuild in correct order: Summary first, then sections
@@ -1769,41 +1745,18 @@ const Scan = () => {
         ? new Date(selectedTemplate.inv_date).toISOString().split('T')[0]
         : new Date().toISOString().split('T')[0];
       
-      // Build summary sheet content - values will be formulas referencing section sheets
-      const summaryRows: any[][] = [
-        // Header info
-        [selectedTemplate.name],
-        [selectedTemplate.facility_name || ''],
-        [dateStr],
-        [], // Empty row
-        // Section table headers
-        ['Sections', 'Scans', 'Value'],
-      ];
-      
-      // Add placeholder rows for each section (will be replaced by formulas)
-      sectionTotals.forEach(st => {
-        summaryRows.push([st.section, '', '']); // Placeholders for formula cells
-      });
-      
-      // Empty row before total
-      summaryRows.push([]);
-      // Grand total row (placeholders for formula cells)
-      summaryRows.push(['Total', '', '']);
-      
-      const summaryWorksheet = XLSX.utils.aoa_to_sheet(summaryRows);
-      summaryWorksheet['!cols'] = [{ wch: 40 }, { wch: 10 }, { wch: 15 }];
-      
       // Get section sheet names for formula references
       const sectionSheetNames = sections.map(section => {
         let sheetName = section.full_section || section.sect || 'Sheet';
         return sheetName.replace(/[\\/*?[\]:]/g, '-').substring(0, 31);
       });
       
-      // Apply formulas to Summary sheet (start row 6 is first section row)
-      applySummaryFormulas(summaryWorksheet, sectionSheetNames, 6);
-      
-      // Add hyperlinks to section names in Summary
-      addSummaryHyperlinks(summaryWorksheet, sectionSheetNames, 6);
+      const summaryWorksheet = createStyledSummarySheet({
+        facilityName: selectedTemplate.facility_name || '',
+        templateName: selectedTemplate.name,
+        dateStr,
+        sectionSheetNames,
+      });
 
       // Create Master sheet - combine all sections
       const masterRows: any[][] = [headers, ...allMasterRows];
@@ -1823,7 +1776,7 @@ const Scan = () => {
         validationData.sectionAnalytics,
         validationData.totalSheets,
         validationData.inBalance,
-        6, // Summary sheet section data starts at row 6
+        11, // Summary sheet section data starts at row 11 in new layout
         sectionSheetNames // Pass sheet names for Master formula references
       );
       
