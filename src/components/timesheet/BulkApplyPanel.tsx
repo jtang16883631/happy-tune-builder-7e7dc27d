@@ -21,6 +21,7 @@ const QUICK_TEMPLATES = [
   { id: "off_on_own", label: "Off Own", icon: Home, startTime: "", endTime: "", workType: "off_on_own", addLunch: false, bgColor: "bg-gray-100 text-gray-600 hover:bg-gray-200" },
   { id: "off_on_road", label: "Off Road", icon: Car, startTime: "", endTime: "", workType: "off_on_road", addLunch: false, bgColor: "bg-slate-100 text-slate-600 hover:bg-slate-200" },
   { id: "company_holiday", label: "Holiday", icon: Calendar, startTime: "", endTime: "", workType: "company_holiday", addLunch: false, bgColor: "bg-red-100 text-red-600 hover:bg-red-200" },
+  { id: "available", label: "Available", icon: Check, startTime: "", endTime: "", workType: "available", addLunch: false, bgColor: "bg-teal-100 text-teal-600 hover:bg-teal-200" },
 ];
 
 interface BulkApplyPanelProps {
