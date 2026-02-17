@@ -519,51 +519,55 @@ export function useCloudTemplates() {
   );
 
   // Delete related rows in batches to avoid statement timeout
+  // Delete related rows in batches to avoid statement timeout
+  // Uses direct filter-based delete instead of fetching IDs first for speed
   const deleteBatched = useCallback(
     async (table: 'scan_records' | 'template_cost_items' | 'template_sections', templateId: string) => {
-      const maxIterations = 200; // Safety guard against infinite loops
-      let iterations = 0;
-      let hasMore = true;
-      while (hasMore) {
-        iterations++;
-        if (iterations > maxIterations) {
-          console.warn(`deleteBatched: hit max iterations for ${table}, stopping`);
-          break;
-        }
+      // First, get total count to know if we need batching
+      const { count, error: countErr } = await supabase
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('template_id', templateId);
 
+      if (countErr) throw countErr;
+      if (!count || count === 0) return;
+
+      // For small datasets, delete directly
+      if (count <= 1000) {
+        const { error: delErr } = await supabase
+          .from(table)
+          .delete()
+          .eq('template_id', templateId);
+        if (delErr) throw delErr;
+        return;
+      }
+
+      // For large datasets, delete in ID-range batches
+      let lastId = '00000000-0000-0000-0000-000000000000';
+      const maxIterations = Math.ceil(count / 500) + 10;
+      for (let i = 0; i < maxIterations; i++) {
+        // Fetch a batch of IDs
         const { data: rows, error: fetchErr } = await supabase
           .from(table)
           .select('id')
           .eq('template_id', templateId)
+          .gt('id', lastId)
+          .order('id', { ascending: true })
           .limit(500);
 
         if (fetchErr) throw fetchErr;
-        if (!rows || rows.length === 0) {
-          hasMore = false;
-          break;
-        }
+        if (!rows || rows.length === 0) break;
 
         const ids = rows.map((r) => r.id);
+        lastId = ids[ids.length - 1];
+
         const { error: delErr } = await supabase
           .from(table)
           .delete()
           .in('id', ids);
 
         if (delErr) throw delErr;
-
-        // Re-check if those rows still exist (RLS may silently block deletes)
-        const { data: checkRows } = await supabase
-          .from(table)
-          .select('id')
-          .in('id', ids.slice(0, 5));
-
-        if (checkRows && checkRows.length > 0) {
-          // RLS blocked the delete – stop trying this table
-          console.warn(`deleteBatched: RLS blocked delete on ${table}, skipping`);
-          break;
-        }
-
-        if (rows.length < 500) hasMore = false;
+        if (rows.length < 500) break;
       }
     },
     []

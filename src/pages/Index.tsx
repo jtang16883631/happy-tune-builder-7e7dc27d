@@ -359,7 +359,10 @@ const Index = () => {
   };
 
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleDeleteSelected = async () => {
+    setIsDeleting(true);
     const errors: string[] = [];
     let successCount = 0;
 
@@ -372,6 +375,7 @@ const Index = () => {
       }
     }
 
+    setIsDeleting(false);
     setSelectedTemplates(new Set());
     setShowDeleteDialog(false);
 
@@ -723,17 +727,26 @@ const Index = () => {
       </div>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => !isDeleting && setShowDeleteDialog(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Templates?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete {selectedTemplates.size} template(s) and all associated data.
+              {isDeleting 
+                ? 'Deleting template data... This may take a moment for large templates.'
+                : `This will permanently delete ${selectedTemplates.size} template(s) and all associated data.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteSelected}>Delete</AlertDialogAction>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteSelected} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : 'Delete'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
