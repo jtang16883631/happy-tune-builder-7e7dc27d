@@ -23,6 +23,7 @@ import { FlashDriveTransferDialog } from '@/components/scanner/FlashDriveTransfe
 import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
 import { CostDataLookupDialog } from '@/components/scanner/CostDataLookupDialog';
 import { ScanSummaryTab } from '@/components/scanner/ScanSummaryTab';
+import { SectionPasswordDialog } from '@/components/scanner/SectionPasswordDialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
@@ -243,6 +244,12 @@ const Scan = () => {
   const [editingSectionDesc, setEditingSectionDesc] = useState('');
   const [editingSectionCostSheet, setEditingSectionCostSheet] = useState<string | null>(null);
 
+  // Password-gated section management
+  const [sectionPasswordOpen, setSectionPasswordOpen] = useState(false);
+  const [pendingSectionAction, setPendingSectionAction] = useState<(() => void) | null>(null);
+  const [sectionActionLabel, setSectionActionLabel] = useState('');
+  const [deleteSectionDialogOpen, setDeleteSectionDialogOpen] = useState(false);
+  const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null);
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -747,6 +754,45 @@ const Scan = () => {
     setEditingSectionDesc(section.description || '');
     setEditingSectionCostSheet(section.cost_sheet || null);
     setRenameSectionDialogOpen(true);
+  };
+
+  // Password gate helper
+  const requirePassword = (label: string, action: () => void) => {
+    setSectionActionLabel(label);
+    setPendingSectionAction(() => action);
+    setSectionPasswordOpen(true);
+  };
+
+  // Delete section handler
+  const handleDeleteSection = async () => {
+    if (!deletingSectionId || !selectedTemplate) return;
+    try {
+      // Delete scan records for this section first
+      await supabase
+        .from('scan_records')
+        .delete()
+        .eq('section_id', deletingSectionId);
+
+      const { error } = await supabase
+        .from('template_sections')
+        .delete()
+        .eq('id', deletingSectionId);
+
+      if (error) throw error;
+
+      toast.success('Section deleted successfully');
+      setDeleteSectionDialogOpen(false);
+      setDeletingSectionId(null);
+
+      // Clear selection if deleted section was selected
+      if (selectedSection?.id === deletingSectionId) {
+        setSelectedSection(null);
+      }
+
+      await loadSections(selectedTemplate.id);
+    } catch (err: any) {
+      toast.error('Failed to delete: ' + err.message);
+    }
   };
 
   // Generate REC value based on row index (1-based)
@@ -2757,22 +2803,38 @@ const Scan = () => {
                       <span className={selectedSection?.id === section.id ? 'font-medium' : ''}>
                         {section.full_section}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditSectionDialog(section);
-                        }}
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            requirePassword('edit this section', () => openEditSectionDialog(section));
+                          }}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            requirePassword('delete this section', () => {
+                              setDeletingSectionId(section.id);
+                              setDeleteSectionDialogOpen(true);
+                            });
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </DropdownMenuItem>
                   ))
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setAddSectionDialogOpen(true)}>
+                <DropdownMenuItem onClick={() => requirePassword('add a new section', () => setAddSectionDialogOpen(true))}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add New Section
                 </DropdownMenuItem>
@@ -3367,6 +3429,40 @@ const Scan = () => {
         onOpenChange={setCostLookupDialogOpen}
         templateId={selectedTemplate?.id || null}
       />
+
+      {/* Section Password Dialog */}
+      <SectionPasswordDialog
+        open={sectionPasswordOpen}
+        onOpenChange={setSectionPasswordOpen}
+        actionLabel={sectionActionLabel}
+        onSuccess={() => {
+          if (pendingSectionAction) {
+            pendingSectionAction();
+            setPendingSectionAction(null);
+          }
+        }}
+      />
+
+      {/* Delete Section Confirmation */}
+      <Dialog open={deleteSectionDialogOpen} onOpenChange={setDeleteSectionDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Section</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will permanently delete this section and all its scan records. This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteSectionDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteSection}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </AppLayout>
   );
