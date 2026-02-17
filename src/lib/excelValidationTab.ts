@@ -326,11 +326,11 @@ export function createValidationWorksheet(
     const sectionName = sectionSheetNames[i] || balanceChecks[i]?.dataSheet || '';
     const escapedSectionName = sectionName.replace(/"/g, '""'); // Escape double quotes for SUMIF criteria
     
-    // From Summary formula: references Summary sheet's Value column (C)
+    // From Summary formula: references Summary sheet's Value column (B in new styled layout)
     const fromSummaryCell = `B${excelRow}`;
     worksheet[fromSummaryCell] = {
       t: 'n',
-      f: `IF(Summary!C${summaryRow}="",0,IFERROR(Summary!C${summaryRow},0))`,
+      f: `IF(Summary!B${summaryRow}="",0,IFERROR(Summary!B${summaryRow},0))`,
       z: '"$"#,##0.00'
     };
     
