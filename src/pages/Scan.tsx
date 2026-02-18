@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { useOnlineStatus } from '@/components/OfflineRedirect';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -92,6 +93,8 @@ interface ScanRow {
 
 const Scan = () => {
   const { isLoading: authLoading, roles, user } = useAuth();
+  // Single source of truth for connectivity (uses backend ping, not just navigator.onLine)
+  const isOnline = useOnlineStatus();
   
   // REC is now generated based on row index (1-based), no counter needed
   
@@ -184,7 +187,6 @@ const Scan = () => {
   const {
     templates: offlineTemplates,
     isLoading: offlineLoading,
-    isOnline,
     isSyncing,
     syncMeta,
     syncProgress,
@@ -198,7 +200,7 @@ const Scan = () => {
     addSection: offlineAddSection,
     updateSection: offlineUpdateSection,
     deleteSection: offlineDeleteSection,
-  } = useOfflineTemplates();
+  } = useOfflineTemplates(isOnline);
   
   const { lookupNDC: fdaLookup, checkIsInnerPack, findOuterCandidates, getDrugByOuterNDC } = useLocalFDA();
 

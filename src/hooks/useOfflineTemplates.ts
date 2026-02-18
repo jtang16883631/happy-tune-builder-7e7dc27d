@@ -100,12 +100,13 @@ const loadFromIndexedDB = async <T>(key: string): Promise<T | null> => {
 
 const generateId = () => crypto.randomUUID();
 
-export function useOfflineTemplates() {
+// Accept isOnline from the authoritative useOnlineStatus hook so there is a
+// single source of truth for connectivity throughout the app.
+export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
   const { user } = useAuth();
   const [db, setDb] = useState<Database | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncMeta, setSyncMeta] = useState<SyncMeta>({ lastSyncedAt: null, pendingChanges: 0 });
   const [error, setError] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({
@@ -116,20 +117,6 @@ export function useOfflineTemplates() {
     status: 'idle',
   });
   const sqlRef = useRef<any>(null);
-
-  // Monitor online status
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   // Initialize sql.js and load database
   useEffect(() => {
@@ -1105,7 +1092,6 @@ export function useOfflineTemplates() {
     templates: db ? getTemplates() : [],
     isLoading,
     isSyncing,
-    isOnline,
     syncMeta,
     syncProgress,
     error,

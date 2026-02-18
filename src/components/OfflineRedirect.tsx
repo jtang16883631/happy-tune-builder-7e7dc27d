@@ -57,9 +57,9 @@ export function useOnlineStatus() {
     if (now - lastCheckAtRef.current < 1500) return;
     lastCheckAtRef.current = now;
 
-    // Quick shortcut: if browser claims offline, treat as offline.
+    // Quick shortcut: if browser claims offline, treat as offline immediately.
     if (!navigator.onLine) {
-      failureCountRef.current = 0;
+      failureCountRef.current = 3; // immediately trigger offline
       setIsOnline(false);
       return;
     }
@@ -85,7 +85,12 @@ export function useOnlineStatus() {
       // Even if the event fires, confirm reachability.
       void refresh();
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      // Browser says offline → trust it immediately, no ping needed.
+      failureCountRef.current = 3;
+      lastCheckAtRef.current = 0; // reset throttle so refresh can run
+      setIsOnline(false);
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
