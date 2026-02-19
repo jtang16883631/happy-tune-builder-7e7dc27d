@@ -18,6 +18,8 @@ serve(async (req) => {
       throw new Error("RESEND_API_KEY not configured");
     }
 
+    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@resend.dev";
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -143,7 +145,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Schedule Hub <noreply@resend.dev>",
+          from: `Schedule Hub <${fromEmail}>`,
           to: [profile.email],
           subject: `📅 You've been assigned: ${event.client_name} on ${formattedDate}`,
           html,
