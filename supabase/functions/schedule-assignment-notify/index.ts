@@ -101,8 +101,11 @@ serve(async (req) => {
         ? "Note"
         : "Work Day";
 
-    // Send emails to each newly added member
-    const emailPromises = profiles.map(async (profile: any) => {
+    // Send emails sequentially to avoid Resend rate limit (2 req/sec on free tier)
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const results: { email: string; success: boolean }[] = [];
+
+    for (const profile of profiles) {
       const name =
         profile.full_name ||
         [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
@@ -155,14 +158,15 @@ serve(async (req) => {
       if (!emailRes.ok) {
         const err = await emailRes.text();
         console.error(`Failed to email ${profile.email}: ${err}`);
-        return { email: profile.email, success: false };
+        results.push({ email: profile.email, success: false });
+      } else {
+        console.log(`Notified ${profile.email} of assignment to event ${eventId}`);
+        results.push({ email: profile.email, success: true });
       }
 
-      console.log(`Notified ${profile.email} of assignment to event ${eventId}`);
-      return { email: profile.email, success: true };
-    });
-
-    const results = await Promise.all(emailPromises);
+      // Wait 600ms between emails to stay under Resend's 2 req/sec free tier limit
+      await sleep(600);
+    }
     const sent = results.filter((r) => r.success).length;
 
     return new Response(
