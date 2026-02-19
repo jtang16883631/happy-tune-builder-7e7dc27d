@@ -166,6 +166,8 @@ export function JobFormDialog({
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
+      const previousTeamMemberIds = job?.team_members || [];
+
       const payload = {
         invoice_number: data.invoice_number || null,
         job_date: format(selectedDate, 'yyyy-MM-dd'),
@@ -189,17 +191,34 @@ export function JobFormDialog({
         hotel_info: data.hotel_info || null,
       };
 
+      let savedJobId: string | null = null;
+
       if (isEditing && job) {
         const { error } = await supabase
           .from('scheduled_jobs')
           .update(payload)
           .eq('id', job.id);
         if (error) throw error;
+        savedJobId = job.id;
       } else {
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('scheduled_jobs')
-          .insert(payload);
+          .insert(payload)
+          .select('id')
+          .single();
         if (error) throw error;
+        savedJobId = inserted?.id ?? null;
+      }
+
+      // Fire-and-forget: notify newly added team members
+      if (savedJobId && data.team_members.length > 0) {
+        supabase.functions.invoke('schedule-assignment-notify', {
+          body: {
+            eventId: savedJobId,
+            newTeamMemberIds: data.team_members,
+            previousTeamMemberIds,
+          },
+        }).catch((err) => console.warn('Notification failed (non-blocking):', err));
       }
     },
     onSuccess: () => {
