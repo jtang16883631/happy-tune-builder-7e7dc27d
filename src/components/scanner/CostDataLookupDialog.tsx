@@ -8,8 +8,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Loader2, DollarSign, ArrowUpDown } from 'lucide-react';
+import { Search, Loader2, DollarSign, ArrowUpDown, Copy, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface CostItem {
   id: string;
@@ -17,8 +18,8 @@ interface CostItem {
   material_description: string | null;
   unit_price: number | null;
   source: string | null;
-  material: string | null; // ABC 6
-  billing_date: string | null; // Invoice Date
+  material: string | null;
+  billing_date: string | null;
   manufacturer: string | null;
   generic: string | null;
   strength: string | null;
@@ -65,8 +66,9 @@ export function CostDataLookupDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
-  const [selectedSheet, setSelectedSheet] = useState<string>('all');
+  const [selectedSheet, setSelectedSheet] = useState<string>('');
   const [sortBySource, setSortBySource] = useState<'asc' | 'none'>('asc');
+  const [isCopied, setIsCopied] = useState(false);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
     COLUMNS.forEach(col => {
@@ -83,7 +85,7 @@ export function CostDataLookupDialog({
     
     setIsLoading(true);
     try {
-      // First, get total count for this template
+      // Get total count
       const { count: totalItems } = await supabase
         .from('template_cost_items')
         .select('*', { count: 'exact', head: true })
@@ -91,10 +93,7 @@ export function CostDataLookupDialog({
       
       setTotalCount(totalItems || 0);
 
-      // Detect sheet tabs reliably for huge datasets.
-      // We fetch the first row of each *distinct* sheet by walking forward
-      // lexicographically (sheet_name > lastSheet). This is fast and won't miss
-      // a smaller sheet that would be skipped by offset sampling.
+      // Detect sheet tabs by walking forward lexicographically
       const sheetSet = new Set<string>();
       let lastSheet: string | null = null;
       const maxSheetsToDetect = 50;
@@ -122,14 +121,23 @@ export function CostDataLookupDialog({
       const uniqueSheets = Array.from(sheetSet).sort((a, b) => a.localeCompare(b));
       setSheetNames(uniqueSheets);
 
-      // Load first batch of items
-      const { data, error } = await supabase
+      // Default to first sheet
+      const defaultSheet = uniqueSheets[0] || '';
+      setSelectedSheet(defaultSheet);
+
+      // Load data for the default sheet
+      let dataQuery = supabase
         .from('template_cost_items')
         .select('id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name')
         .eq('template_id', templateId)
-        .order('sheet_name')
         .order('ndc')
         .limit(1000);
+
+      if (defaultSheet) {
+        dataQuery = dataQuery.eq('sheet_name', defaultSheet);
+      }
+
+      const { data, error } = await dataQuery;
 
       if (error) throw error;
       setCostItems(data || []);
@@ -145,20 +153,13 @@ export function CostDataLookupDialog({
     if (open && templateId) {
       loadCostItems();
       setSearchQuery('');
-      setSelectedSheet('all');
     }
   }, [open, templateId, loadCostItems]);
 
-  // Filter items based on search query and selected sheet
+  // Filter items based on search query
   useEffect(() => {
     let items = [...costItems];
 
-    // Filter by sheet
-    if (selectedSheet !== 'all') {
-      items = items.filter(item => item.sheet_name === selectedSheet);
-    }
-
-    // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       items = items.filter(item => 
@@ -179,9 +180,9 @@ export function CostDataLookupDialog({
     }
 
     setFilteredItems(items);
-  }, [searchQuery, costItems, selectedSheet, sortBySource]);
+  }, [searchQuery, costItems, sortBySource]);
 
-  // Load data for specific sheet when tab is selected
+  // Load data for a specific sheet tab
   const loadSheetData = useCallback(async (sheetName: string) => {
     if (!templateId) return;
     
@@ -194,7 +195,7 @@ export function CostDataLookupDialog({
         .order('ndc')
         .limit(1000);
 
-      if (sheetName !== 'all') {
+      if (sheetName) {
         query = query.eq('sheet_name', sheetName);
       }
 
@@ -231,7 +232,7 @@ export function CostDataLookupDialog({
         .or(`ndc.ilike.${query},generic.ilike.${query},material_description.ilike.${query}`)
         .limit(100);
 
-      if (selectedSheet !== 'all') {
+      if (selectedSheet) {
         dbQuery = dbQuery.eq('sheet_name', selectedSheet);
       }
 
@@ -246,9 +247,10 @@ export function CostDataLookupDialog({
     }
   };
 
+  // Format price as $99.99
   const formatPrice = (price: number | null) => {
     if (price === null || price === undefined) return '-';
-    return `$${price.toFixed(4)}`;
+    return `$${price.toFixed(2)}`;
   };
 
   const formatCellValue = (item: CostItem, key: keyof CostItem) => {
@@ -256,6 +258,29 @@ export function CostDataLookupDialog({
     if (value === null || value === undefined) return '-';
     if (key === 'unit_price') return formatPrice(value as number);
     return String(value);
+  };
+
+  // Copy all visible data including header to clipboard
+  const handleCopyAll = async () => {
+    const header = COLUMNS.map(col => col.label).join('\t');
+    const rows = filteredItems.map(item =>
+      COLUMNS.map(col => {
+        const value = item[col.key];
+        if (value === null || value === undefined) return '';
+        if (col.key === 'unit_price') return formatPrice(value as number);
+        return String(value);
+      }).join('\t')
+    );
+    const text = [header, ...rows].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopied(true);
+      toast.success(`Copied ${filteredItems.length + 1} rows (including header) to clipboard`);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy to clipboard');
+    }
   };
 
   // Column resize handlers
@@ -299,10 +324,6 @@ export function CostDataLookupDialog({
     };
   }, [handleResizeMove, handleResizeEnd]);
 
-  const currentSheetCount = selectedSheet === 'all' 
-    ? costItems.length 
-    : costItems.filter(item => item.sheet_name === selectedSheet).length;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] max-h-[90vh] w-full">
@@ -311,39 +332,34 @@ export function CostDataLookupDialog({
             <DollarSign className="h-5 w-5" />
             Cost Data Lookup
             <span className="text-sm font-normal text-muted-foreground">
-              ({totalCount.toLocaleString()} items)
+              ({totalCount.toLocaleString()} items total)
             </span>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Sheet Tabs - Excel-style */}
+        <div className="space-y-3">
+          {/* Sheet Tabs - Excel-style, no "All Sheets" */}
           {sheetNames.length > 0 && (
-            <div className="flex items-center gap-1 border-b pb-2">
-              <span className="text-xs text-muted-foreground mr-2">Sheets:</span>
-              <div className="flex gap-1 flex-wrap">
-                <Button
-                  variant={selectedSheet === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => handleSheetChange('all')}
-                >
-                  All Sheets
-                </Button>
+            <div className="flex items-center gap-1 border-b">
+              <div className="flex gap-0 overflow-x-auto">
                 {sheetNames.map(sheet => (
-                  <Button
+                  <button
                     key={sheet}
-                    variant={selectedSheet === sheet ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
                     onClick={() => handleSheetChange(sheet)}
+              className={`px-4 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
+                      selectedSheet === sheet
+                        ? 'border-primary text-primary bg-primary/10'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    }`}
                   >
                     {sheet}
-                  </Button>
+                  </button>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Search + controls row */}
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -366,15 +382,28 @@ export function CostDataLookupDialog({
               <ArrowUpDown className="h-4 w-4 mr-1" />
               Source A-Z
             </Button>
-            <Button onClick={handleDatabaseSearch} disabled={isLoading}>
+            <Button onClick={handleDatabaseSearch} disabled={isLoading} variant="outline">
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search DB'}
+            </Button>
+            <Button
+              onClick={handleCopyAll}
+              disabled={isLoading || filteredItems.length === 0}
+              variant="outline"
+              className="whitespace-nowrap"
+              title="Copy all data including header to clipboard"
+            >
+              {isCopied ? (
+                <><Check className="h-4 w-4 mr-1 text-green-500" />Copied!</>
+              ) : (
+                <><Copy className="h-4 w-4 mr-1" />Copy All</>
+              )}
             </Button>
           </div>
 
           {/* Results count */}
           <div className="text-sm text-muted-foreground">
-            Showing {filteredItems.length} of {currentSheetCount.toLocaleString()} items
-            {selectedSheet !== 'all' && ` in ${selectedSheet}`}
+            Showing {filteredItems.length.toLocaleString()} items
+            {selectedSheet && ` in "${selectedSheet}"`}
             {searchQuery && ` matching "${searchQuery}"`}
           </div>
 
