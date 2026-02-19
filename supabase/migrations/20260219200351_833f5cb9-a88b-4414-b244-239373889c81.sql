@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS timesheet_reminder_exempt boolean NOT NULL DEFAULT false;

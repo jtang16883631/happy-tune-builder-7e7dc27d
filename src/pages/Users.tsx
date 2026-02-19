@@ -25,7 +25,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserCog, Crown, Code, ClipboardCheck, Search, Trash2, Briefcase } from 'lucide-react';
+import { Loader2, UserCog, Crown, Code, ClipboardCheck, Search, Trash2, Briefcase, BellOff, Bell } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type AppRole = 'auditor' | 'developer' | 'coordinator' | 'owner' | 'office_admin';
 
@@ -35,6 +37,7 @@ interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   created_at: string;
+  timesheet_reminder_exempt: boolean | null;
 }
 
 interface UserRole {
@@ -141,6 +144,33 @@ const Users = () => {
       toast({
         title: 'Error',
         description: 'Failed to update role',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleExemptToggle = async (userId: string, currentValue: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ timesheet_reminder_exempt: !currentValue })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: !currentValue ? 'Reminder disabled' : 'Reminder enabled',
+        description: !currentValue
+          ? 'This user will no longer receive timesheet reminder emails.'
+          : 'This user will now receive timesheet reminder emails.',
+      });
+
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating exempt status:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update reminder preference',
         variant: 'destructive',
       });
     }
@@ -290,6 +320,32 @@ const Users = () => {
                           {config.label}
                         </Badge>
                       )}
+
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="flex items-center gap-1.5">
+                              {u.timesheet_reminder_exempt ? (
+                                <BellOff className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <Bell className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <Switch
+                                checked={!u.timesheet_reminder_exempt}
+                                onCheckedChange={() =>
+                                  handleExemptToggle(u.id, u.timesheet_reminder_exempt ?? false)
+                                }
+                                disabled={isCurrentUser}
+                              />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {u.timesheet_reminder_exempt
+                              ? 'Timesheet reminders disabled – click to enable'
+                              : 'Timesheet reminders enabled – click to disable'}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
                       <Select
                         value={currentRole}
