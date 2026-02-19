@@ -598,6 +598,7 @@ export type Database = {
           middle_name: string | null
           phone: string | null
           profile_completed: boolean | null
+          timesheet_reminder_exempt: boolean
           updated_at: string
         }
         Insert: {
@@ -611,6 +612,7 @@ export type Database = {
           middle_name?: string | null
           phone?: string | null
           profile_completed?: boolean | null
+          timesheet_reminder_exempt?: boolean
           updated_at?: string
         }
         Update: {
@@ -624,6 +626,7 @@ export type Database = {
           middle_name?: string | null
           phone?: string | null
           profile_completed?: boolean | null
+          timesheet_reminder_exempt?: boolean
           updated_at?: string
         }
         Relationships: []

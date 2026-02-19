@@ -50,11 +50,12 @@ serve(async (req) => {
 
     console.log(`Checking timesheets for week: ${weekStartStr} to ${weekEndStr}`);
 
-    // Get all profiles with emails
+    // Get all profiles with emails, excluding exempted users
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, full_name, email, first_name, last_name")
-      .not("email", "is", null);
+      .select("id, full_name, email, first_name, last_name, timesheet_reminder_exempt")
+      .not("email", "is", null)
+      .eq("timesheet_reminder_exempt", false);
 
     if (profilesError) throw profilesError;
 
