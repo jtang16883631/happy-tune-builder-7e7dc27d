@@ -62,7 +62,6 @@ export function FlashDriveTransferDialog({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const prevOpenRef = useRef(false);
   
   // Use offline templates directly for both export and import
   const { 
@@ -72,12 +71,6 @@ export function FlashDriveTransferDialog({
     importFromFlashDrive,
     getTemplateCostItemCount,
   } = useOfflineTemplates();
-
-  // Auto-select all when dialog first opens
-  if (open && !prevOpenRef.current) {
-    setSelectedExportIds(offlineTemplates.map(t => t.id));
-  }
-  prevOpenRef.current = open;
 
   const handleToggleExportTemplate = (id: string) => {
     setSelectedExportIds(prev =>

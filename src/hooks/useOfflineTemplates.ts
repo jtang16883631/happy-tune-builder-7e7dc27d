@@ -434,22 +434,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       // Get currently synced templates
       const currentlySynced = getSyncedTemplateIds();
       
-      // Templates to add (in templateIds but not synced)
+      // Only ADD templates that aren't already downloaded — never remove existing ones
       const toAdd = templateIds.filter(id => !currentlySynced.includes(id));
-      
-      // Templates to remove (synced but not in templateIds)
-      const toRemove = currentlySynced.filter(id => !templateIds.includes(id));
-
-      // Remove unselected templates
-      for (const cloudId of toRemove) {
-        const localResult = db.exec(`SELECT id FROM templates WHERE cloud_id = ?`, [cloudId]);
-        if (localResult.length > 0 && localResult[0].values.length > 0) {
-          const localId = localResult[0].values[0][0] as string;
-          db.run(`DELETE FROM cost_items WHERE template_id = ?`, [localId]);
-          db.run(`DELETE FROM sections WHERE template_id = ?`, [localId]);
-          db.run(`DELETE FROM templates WHERE id = ?`, [localId]);
-        }
-      }
 
       // Add newly selected templates
       let synced = 0;
