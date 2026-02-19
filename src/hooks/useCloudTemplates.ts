@@ -296,25 +296,46 @@ export function useCloudTemplates() {
             const ndcValue = columnKeys[0] ? row[columnKeys[0]] : null;
             if (!ndcValue || String(ndcValue).trim().length === 0) continue;
 
+            // Column order: A=NDC, B=Description, C=Price, D=Source, E=Material(ABC6),
+            // F=BillingDate, G=Manufacturer, H=Generic, I=Strength, J=Size, K=Dose
             const colA = columnKeys[0] ? row[columnKeys[0]] : null;
             const colB = columnKeys[1] ? row[columnKeys[1]] : null;
             const colC = columnKeys[2] ? row[columnKeys[2]] : null;
             const colD = columnKeys[3] ? row[columnKeys[3]] : null;
             const colE = columnKeys[4] ? row[columnKeys[4]] : null;
+            const colF = columnKeys[5] ? row[columnKeys[5]] : null;
+            const colG = columnKeys[6] ? row[columnKeys[6]] : null;
+            const colH = columnKeys[7] ? row[columnKeys[7]] : null;
+            const colI = columnKeys[8] ? row[columnKeys[8]] : null;
+            const colJ = columnKeys[9] ? row[columnKeys[9]] : null;
+            const colK = columnKeys[10] ? row[columnKeys[10]] : null;
+
+            // Parse billing date (may be Excel serial number or date string)
+            let billingDate: string | null = null;
+            if (colF != null && String(colF).trim()) {
+              const raw = colF;
+              if (typeof raw === 'number') {
+                const d = new Date((raw - 25569) * 86400 * 1000);
+                billingDate = d.toISOString().split('T')[0];
+              } else {
+                const parsed = new Date(String(raw));
+                billingDate = isNaN(parsed.getTime()) ? truncate(String(raw), 50) : parsed.toISOString().split('T')[0];
+              }
+            }
 
             allCostItems.push({
               template_id: templateId,
               ndc: truncate(colA, 50),
               material_description: truncate(colB, 255),
               unit_price: colC ? parseFloat(String(colC)) : null,
-              source: truncate(colD, 50),
+              source: truncate(colD, 255),
               material: truncate(colE, 50),
-              billing_date: null,
-              manufacturer: null,
-              generic: null,
-              strength: null,
-              size: null,
-              dose: null,
+              billing_date: billingDate,
+              manufacturer: truncate(colG, 255),
+              generic: truncate(colH, 255),
+              strength: truncate(colI, 100),
+              size: truncate(colJ, 50),
+              dose: truncate(colK, 100),
               sheet_name: truncate(sheetName ?? 'Sheet1', 50),
             });
           }
@@ -468,25 +489,46 @@ export function useCloudTemplates() {
             const ndcValue = columnKeys[0] ? row[columnKeys[0]] : null;
             if (!ndcValue || String(ndcValue).trim().length === 0) continue;
 
+            // Column order: A=NDC, B=Description, C=Price, D=Source, E=Material(ABC6),
+            // F=BillingDate, G=Manufacturer, H=Generic, I=Strength, J=Size, K=Dose
             const colA = columnKeys[0] ? row[columnKeys[0]] : null;
             const colB = columnKeys[1] ? row[columnKeys[1]] : null;
             const colC = columnKeys[2] ? row[columnKeys[2]] : null;
             const colD = columnKeys[3] ? row[columnKeys[3]] : null;
             const colE = columnKeys[4] ? row[columnKeys[4]] : null;
+            const colF = columnKeys[5] ? row[columnKeys[5]] : null;
+            const colG = columnKeys[6] ? row[columnKeys[6]] : null;
+            const colH = columnKeys[7] ? row[columnKeys[7]] : null;
+            const colI = columnKeys[8] ? row[columnKeys[8]] : null;
+            const colJ = columnKeys[9] ? row[columnKeys[9]] : null;
+            const colK = columnKeys[10] ? row[columnKeys[10]] : null;
+
+            // Parse billing date (may be Excel serial number or date string)
+            let billingDate: string | null = null;
+            if (colF != null && String(colF).trim()) {
+              const raw = colF;
+              if (typeof raw === 'number') {
+                const d = new Date((raw - 25569) * 86400 * 1000);
+                billingDate = d.toISOString().split('T')[0];
+              } else {
+                const parsed = new Date(String(raw));
+                billingDate = isNaN(parsed.getTime()) ? truncate(String(raw), 50) : parsed.toISOString().split('T')[0];
+              }
+            }
 
             allCostItems.push({
               template_id: templateId,
               ndc: truncate(colA, 50),
               material_description: truncate(colB, 255),
               unit_price: colC ? parseFloat(String(colC)) : null,
-              source: truncate(colD, 50),
+              source: truncate(colD, 255),
               material: truncate(colE, 50),
-              billing_date: null,
-              manufacturer: null,
-              generic: null,
-              strength: null,
-              size: null,
-              dose: null,
+              billing_date: billingDate,
+              manufacturer: truncate(colG, 255),
+              generic: truncate(colH, 255),
+              strength: truncate(colI, 100),
+              size: truncate(colJ, 50),
+              dose: truncate(colK, 100),
               sheet_name: truncate(sheetName ?? 'Sheet1', 50),
             });
           }
