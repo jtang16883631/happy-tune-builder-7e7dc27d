@@ -168,8 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const initSession = async () => {
       try {
-        // If we're offline, immediately restore from localStorage cache
-        // so we don't hang for 5 seconds waiting for a network call
+        // If the browser itself reports offline, restore from cache immediately
+        // without waiting for any network call. This handles the cold-start case
+        // where the device has never had a connection in this session.
         if (!navigator.onLine) {
           const cachedUserId = localStorage.getItem('cached_user_id');
           if (cachedUserId && isMounted) {
@@ -185,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setUser(localSession.user);
               }
             } catch {
-              // ignore — we'll stay with null user but roles are set
+              // ignore — roles are still set from cache
             }
           } else if (isMounted) {
             setRolesLoaded(true);
@@ -194,9 +195,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Add timeout to prevent hanging when network is slow/unavailable
+        // Try to get session with a generous timeout.
+        // Use a longer timeout (8s) to handle slow connections rather than
+        // misidentifying them as offline during a cold start.
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Auth timeout')), 5000)
+          setTimeout(() => reject(new Error('Auth timeout')), 8000)
         );
         
         const sessionPromise = supabase.auth.getSession();
@@ -228,12 +231,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error('Error initializing session:', err);
-        // On timeout/error, try to restore from cache so app is usable offline
+        // On timeout/error (e.g. no network on cold start), restore from cache.
         const cachedUserId = localStorage.getItem('cached_user_id');
         if (cachedUserId && isMounted) {
           const cached = readCachedRoles(cachedUserId);
           setRoles(cached);
           setRolesLoaded(true);
+          // Also try to restore the session object from local Supabase store
+          try {
+            const { data: { session: localSession } } = await supabase.auth.getSession();
+            if (localSession?.user && isMounted) {
+              setSession(localSession);
+              setUser(localSession.user);
+            }
+          } catch {
+            // ignore
+          }
         } else if (isMounted) {
           setRolesLoaded(true);
         }

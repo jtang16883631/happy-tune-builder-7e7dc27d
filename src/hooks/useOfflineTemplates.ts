@@ -478,9 +478,11 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           currentTemplate: ct.name || ct.facility_name || 'Template',
         }));
 
-        const localId = generateId();
+        // Use cloud ID as local ID so localStorage scan records
+        // (keyed by template/section ID) stay consistent between online and offline.
+        const localId = ct.id;
         db.run(`
-          INSERT INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number, 
+          INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number, 
                                  cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
         `, [
@@ -491,7 +493,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         // Update progress - fetching sections
         setSyncProgress(prev => ({ ...prev, status: 'fetching_sections' }));
 
-        // Fetch and insert sections
+        // Fetch and insert sections — use cloud section IDs so localStorage
+        // scan_records keys are identical to those written during online scanning.
         const { data: sections } = await supabase
           .from('template_sections')
           .select('*')
@@ -499,9 +502,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
         for (const s of sections || []) {
           db.run(`
-            INSERT INTO sections (id, template_id, sect, description, full_section, cost_sheet)
+            INSERT OR REPLACE INTO sections (id, template_id, sect, description, full_section, cost_sheet)
             VALUES (?, ?, ?, ?, ?, ?)
-          `, [generateId(), localId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
+          `, [s.id, localId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
         }
 
         // Update progress - fetching cost items
@@ -528,9 +531,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
           for (const c of costItems || []) {
             db.run(`
-              INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
+              INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `, [generateId(), localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
+            `, [c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
           }
 
           totalCostItemsFetched += (costItems?.length || 0);
@@ -597,10 +600,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         const existing = db.exec(`SELECT id FROM templates WHERE cloud_id = ?`, [ct.id]);
         
         if (existing.length === 0 || existing[0].values.length === 0) {
-          // Insert new template
-          const localId = generateId();
+          // Use cloud ID as local ID so localStorage scan_records keys are consistent
+          const localId = ct.id;
           db.run(`
-            INSERT INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number, 
+            INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number, 
                                    cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
           `, [
@@ -608,7 +611,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             ct.cost_file_name, ct.job_ticket_file_name, ct.status || 'active', ct.created_at, ct.updated_at
           ]);
 
-          // Fetch and insert sections
+          // Fetch and insert sections using cloud section IDs
           const { data: sections } = await supabase
             .from('template_sections')
             .select('*')
@@ -616,9 +619,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
           for (const s of sections || []) {
             db.run(`
-              INSERT INTO sections (id, template_id, sect, description, full_section, cost_sheet)
+              INSERT OR REPLACE INTO sections (id, template_id, sect, description, full_section, cost_sheet)
               VALUES (?, ?, ?, ?, ?, ?)
-            `, [generateId(), localId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
+            `, [s.id, localId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
           }
 
           // Fetch and insert cost items with pagination (handle >1000 items)
@@ -641,9 +644,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
             for (const c of costItems || []) {
               db.run(`
-                INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
+                INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              `, [generateId(), localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
+              `, [c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
             }
 
             hasMoreCostItems = (costItems?.length || 0) === costItemsLimit;
