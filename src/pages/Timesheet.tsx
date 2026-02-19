@@ -44,6 +44,7 @@ import { TimesheetRow, DayEntry, TimesheetSegment, WORK_TYPES } from "@/componen
 import { MobileTimesheetRow } from "@/components/timesheet/MobileTimesheetRow";
 import { BulkApplyPanel } from "@/components/timesheet/BulkApplyPanel";
 import { WeeklyTotalBar } from "@/components/timesheet/WeeklyTotalBar";
+import { QuickClockPanel } from "@/components/timesheet/QuickClockPanel";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -78,10 +79,11 @@ const createEmptySegment = (): TimesheetSegment => ({
 });
 
 export default function Timesheet() {
-  const { user } = useAuth();
+  const { user, roles } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const isOfficeAdmin = roles.includes("office_admin" as any);
 
   // Week ending date (Sunday) - week runs Monday-Sunday
   const [weekEndingDate, setWeekEndingDate] = useState<Date>(() => {
@@ -734,6 +736,14 @@ export default function Timesheet() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Quick Clock Panel - Office Admin only */}
+        {isOfficeAdmin && user && !isLocked && (
+          <QuickClockPanel
+            userId={user.id}
+            onSaved={() => queryClient.invalidateQueries({ queryKey: ["timesheet-entries"] })}
+          />
         )}
 
         {/* Week Selector + Live Calendar */}
