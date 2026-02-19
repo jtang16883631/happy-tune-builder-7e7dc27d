@@ -45,12 +45,12 @@ export function DeviceSyncDialog({
 }: DeviceSyncDialogProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Initialize with already synced templates
+  // Reset selection to empty when dialog opens
   useEffect(() => {
     if (open) {
-      setSelectedIds(syncedTemplateIds);
+      setSelectedIds([]);
     }
-  }, [open, syncedTemplateIds]);
+  }, [open]);
 
   const handleToggle = (id: string) => {
     setSelectedIds(prev => 
