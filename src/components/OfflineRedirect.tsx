@@ -7,12 +7,12 @@ const OFFLINE_ROUTES = ['/scan', '/fda', '/auth'];
 export function OfflineRedirect() {
   const navigate = useNavigate();
   const location = useLocation();
-  const isOnline = useOnlineStatus();
+  const { isOnline, isChecking } = useOnlineStatusFull();
 
   useEffect(() => {
-    // Only redirect when:
-    // 1. We are offline
-    // 2. Current route is NOT one of the allowed offline routes
+    // Don't redirect while we're still doing the initial connectivity check
+    if (isChecking) return;
+    // Only redirect when offline
     if (isOnline) return;
     if (OFFLINE_ROUTES.includes(location.pathname)) return;
 
@@ -22,20 +22,28 @@ export function OfflineRedirect() {
     } else {
       navigate('/auth', { replace: true });
     }
-  }, [isOnline, navigate, location.pathname]);
+  }, [isOnline, isChecking, navigate, location.pathname]);
 
   return null;
 }
 
-
-// Helper hook to check online status
-export function useOnlineStatus() {
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+// -----------------------------------------------------------------------
+// Internal full hook – returns { isOnline, isChecking }
+// -----------------------------------------------------------------------
+function useOnlineStatusFull(): { isOnline: boolean; isChecking: boolean } {
+  // Start in "checking" state so we don't incorrectly assume online.
+  // isOnline is initialised to false so that, while we verify, nothing
+  // assumes connectivity that doesn't exist.
+  const [isOnline, setIsOnline] = useState<boolean>(false);
+  const [isChecking, setIsChecking] = useState<boolean>(true);
   const lastCheckAtRef = useRef<number>(0);
   const failureCountRef = useRef<number>(0);
+  const hasCompletedFirstCheck = useRef<boolean>(false);
 
   const checkBackendReachable = useCallback(async (): Promise<boolean> => {
-    // In Electron, navigator.onLine can be unreliable. Use a small backend health endpoint.
+    // Quick shortcut: if browser claims offline, trust it immediately.
+    if (!navigator.onLine) return false;
+
     const baseUrl = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
     if (!baseUrl || !anonKey) return navigator.onLine;
@@ -47,9 +55,7 @@ export function useOnlineStatus() {
         method: 'GET',
         cache: 'no-store',
         signal: controller.signal,
-        headers: {
-          'apikey': anonKey,
-        },
+        headers: { 'apikey': anonKey },
       });
       return res.ok;
     } catch {
@@ -59,60 +65,64 @@ export function useOnlineStatus() {
     }
   }, []);
 
-  const refresh = useCallback(async () => {
-    // Throttle checks to avoid spamming
+  const refresh = useCallback(async (force = false) => {
+    // Throttle checks to avoid spamming (except forced checks)
     const now = Date.now();
-    if (now - lastCheckAtRef.current < 1500) return;
+    if (!force && now - lastCheckAtRef.current < 1500) return;
     lastCheckAtRef.current = now;
 
     // Quick shortcut: if browser claims offline, treat as offline immediately.
     if (!navigator.onLine) {
-      failureCountRef.current = 3; // immediately trigger offline
+      failureCountRef.current = 3;
       setIsOnline(false);
+      if (!hasCompletedFirstCheck.current) {
+        hasCompletedFirstCheck.current = true;
+        setIsChecking(false);
+      }
       return;
     }
 
-    // Electron + captive portals can cause intermittent false negatives.
-    // To avoid trapping users in "offline mode" while they actually have internet,
-    // only flip to offline after several consecutive backend ping failures.
     const ok = await checkBackendReachable();
     if (ok) {
       failureCountRef.current = 0;
       setIsOnline(true);
-      return;
+    } else {
+      failureCountRef.current += 1;
+      // Require 3 consecutive failures before going offline,
+      // EXCEPT on the first check — if the very first ping fails, go offline immediately.
+      if (!hasCompletedFirstCheck.current || failureCountRef.current >= 3) {
+        setIsOnline(false);
+      }
     }
 
-    failureCountRef.current += 1;
-    if (failureCountRef.current >= 3) {
-      setIsOnline(false);
+    if (!hasCompletedFirstCheck.current) {
+      hasCompletedFirstCheck.current = true;
+      setIsChecking(false);
     }
   }, [checkBackendReachable]);
 
   useEffect(() => {
-    const handleOnline = () => {
-      // Even if the event fires, confirm reachability.
-      void refresh();
-    };
+    const handleOnline = () => { void refresh(true); };
     const handleOffline = () => {
-      // Browser says offline → trust it immediately, no ping needed.
       failureCountRef.current = 3;
-      lastCheckAtRef.current = 0; // reset throttle so refresh can run
+      lastCheckAtRef.current = 0;
       setIsOnline(false);
+      if (!hasCompletedFirstCheck.current) {
+        hasCompletedFirstCheck.current = true;
+        setIsChecking(false);
+      }
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial check + periodic re-check
-    void refresh();
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 15000);
+    // Initial check — force it so throttle doesn't block
+    void refresh(true);
+
+    const interval = window.setInterval(() => { void refresh(); }, 15000);
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void refresh();
-      }
+      if (document.visibilityState === 'visible') { void refresh(true); }
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
@@ -124,5 +134,13 @@ export function useOnlineStatus() {
     };
   }, [refresh]);
 
+  return { isOnline, isChecking };
+}
+
+// -----------------------------------------------------------------------
+// Public hook – returns just the boolean for backward compatibility
+// -----------------------------------------------------------------------
+export function useOnlineStatus(): boolean {
+  const { isOnline } = useOnlineStatusFull();
   return isOnline;
 }

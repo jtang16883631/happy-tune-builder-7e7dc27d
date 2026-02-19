@@ -88,10 +88,11 @@ const isHandlingOAuth = handleOAuthRedirectSync();
 // Hook to wait for OAuth processing
 function useOAuthHandler() {
   const [isProcessing, setIsProcessing] = useState(isHandlingOAuth);
+  const isOnline = useOnlineStatus();
   
   useEffect(() => {
     // If offline, don't wait for OAuth processing
-    if (!navigator.onLine) {
+    if (!isOnline) {
       setIsProcessing(false);
       return;
     }
@@ -104,7 +105,7 @@ function useOAuthHandler() {
       }, 3000); // 3 second timeout
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [isOnline]);
   
   return isProcessing;
 }
@@ -128,6 +129,18 @@ function ProtectedRoute({
 
   // Check if we have a cached user ID (set during last successful login)
   const hasCachedSession = !!localStorage.getItem('cached_user_id');
+
+  // While connectivity is being determined (isOnline starts false until first ping),
+  // show a spinner so we don't flash the wrong layout.
+  // Exception: if browser explicitly says offline AND we have a cached session, skip the wait.
+  const connectivityKnown = isOnline || !navigator.onLine || hasCachedSession;
+  if (!connectivityKnown) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // If offline and this route allows offline access, always render children.
   // The OfflineLayout wrapper in AppLayout handles the locked UI.
