@@ -358,21 +358,20 @@ export function useCloudTemplates() {
           batches.push(allCostItems.slice(i, i + batchSize));
         }
 
-        let completedBatches = 0;
+        let insertedCount = 0;
         
-        // Process batches in parallel chunks
+        // Process batches in parallel chunks — each batch reports its own progress
         for (let i = 0; i < batches.length; i += concurrency) {
           const chunk = batches.slice(i, i + concurrency);
           const promises = chunk.map(async (batch) => {
             const { error: costError } = await supabase.from('template_cost_items').insert(batch);
             if (costError) throw costError;
+            insertedCount += batch.length;
+            onProgress?.({ stage: 'cost', inserted: Math.min(insertedCount, totalItems), total: totalItems });
             return batch.length;
           });
           
-          const results = await Promise.all(promises);
-          completedBatches += chunk.length;
-          const inserted = Math.min(completedBatches * batchSize, totalItems);
-          onProgress?.({ stage: 'cost', inserted, total: totalItems });
+          await Promise.all(promises);
         }
 
         onProgress?.({ stage: 'cost', inserted: totalItems, total: totalItems });
