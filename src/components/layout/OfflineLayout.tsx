@@ -1,7 +1,8 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ClipboardList, Database, CloudOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { QuickClockPanel } from '@/components/timesheet/QuickClockPanel';
 
 interface OfflineLayoutProps {
   children: ReactNode;
@@ -19,6 +20,7 @@ const offlineTabs = [
  */
 export function OfflineLayout({ children }: OfflineLayoutProps) {
   const location = useLocation();
+  const cachedUserId = localStorage.getItem('cached_user_id');
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -54,6 +56,13 @@ export function OfflineLayout({ children }: OfflineLayoutProps) {
           );
         })}
       </nav>
+
+      {/* Quick Clock Panel (offline) */}
+      {cachedUserId && (
+        <div className="px-6 pt-4">
+          <QuickClockPanel userId={cachedUserId} />
+        </div>
+      )}
 
       {/* Content */}
       <main className="flex-1 p-6 w-full">
