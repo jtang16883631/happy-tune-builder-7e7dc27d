@@ -306,7 +306,17 @@ const Index = () => {
           costSheets,
           jobTicketData.rawData,
           group.costFile!.name,
-          group.jobTicketFile!.name
+          group.jobTicketFile!.name,
+          true, // skipRefetch in bulk mode
+          (p) => {
+            flushSync(() => {
+              setImportProgress((prev) => ({
+                ...prev,
+                subProcessed: p.inserted,
+                subTotal: p.total,
+              }));
+            });
+          }
         );
 
         if (result.success) {
