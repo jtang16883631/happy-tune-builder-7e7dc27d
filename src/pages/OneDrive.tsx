@@ -54,7 +54,7 @@ export default function OneDrive() {
     return [{ id: null, name: "My files" }];
   });
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode] = useState<"grid" | "list">("list");
   const [selectedFile, setSelectedFile] = useState<OneDriveItem | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -261,7 +261,7 @@ export default function OneDrive() {
           isLoadingFiles={isLoadingFiles}
           onBreadcrumbClick={handleBreadcrumbClick}
           onSearchChange={setSearchQuery}
-          onViewModeChange={setViewMode}
+          onViewModeChange={() => {}}
           onRefresh={() => loadFiles(currentFolderId)}
         />
 
