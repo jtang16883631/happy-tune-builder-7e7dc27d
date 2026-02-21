@@ -1,7 +1,6 @@
-import { Search, RefreshCw, LayoutGrid, List, Home, ChevronRight } from "lucide-react";
+import { Search, RefreshCw, Home, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { BreadcrumbItem } from "./types";
 
 interface OneDriveToolbarProps {
@@ -50,20 +49,6 @@ export function OneDriveToolbar({
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 gap-4 border-t">
         <div className="flex items-center gap-2">
-          <ToggleGroup 
-            type="single" 
-            value={viewMode} 
-            onValueChange={(v) => v && onViewModeChange(v as "grid" | "list")}
-            className="bg-muted rounded-md p-0.5"
-          >
-            <ToggleGroupItem value="grid" aria-label="Grid view" className="h-8 w-8 p-0">
-              <LayoutGrid className="h-4 w-4" />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="list" aria-label="List view" className="h-8 w-8 p-0">
-              <List className="h-4 w-4" />
-            </ToggleGroupItem>
-          </ToggleGroup>
-
           <Button 
             variant="ghost" 
             size="icon"
