@@ -337,6 +337,15 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
             <LogOut className="h-4 w-4" />
             Log Out
           </Button>
+          <p className="text-[10px] text-white/30 text-center mt-2 select-none">
+            Build: {(() => {
+              try {
+                const ts = Number(__BUILD_TIMESTAMP__);
+                const d = new Date(ts);
+                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+              } catch { return __BUILD_TIMESTAMP__; }
+            })()}
+          </p>
         </div>
       </aside>
 
