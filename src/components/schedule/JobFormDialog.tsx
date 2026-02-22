@@ -72,7 +72,7 @@ interface FormData {
   hotel_info: string;
 }
 
-const MAKE_WEBHOOK_URL = 'https://hook.us1.make.com/YOUR_PLACEHOLDER_URL';
+const MAKE_WEBHOOK_URL = import.meta.env.VITE_MAKE_WEBHOOK_URL || '';
 
 function generateLegacyHTML(data: FormData, teamMembers: TeamMember[]): string {
   let html = '';
