@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import initSqlJs, { Database } from 'sql.js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { gzipDecompress, isGzipped } from '@/lib/compression';
 
 const DB_NAME = 'offline_templates_db';
 const DB_STORE = 'sqlite_store';
@@ -1185,8 +1186,14 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const tempDb = new sqlRef.current.Database(data);
+      let data = new Uint8Array(arrayBuffer);
+      
+      // Auto-detect and decompress gzip
+      if (isGzipped(data)) {
+        data = await gzipDecompress(data) as any;
+      }
+      
+      const tempDb = new sqlRef.current.Database(data as any);
       
       // Query templates
       const templatesResult = tempDb.exec(`
@@ -1239,8 +1246,14 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(arrayBuffer);
-      const sourceDb = new sqlRef.current.Database(data);
+      let data = new Uint8Array(arrayBuffer);
+      
+      // Auto-detect and decompress gzip
+      if (isGzipped(data)) {
+        data = await gzipDecompress(data) as any;
+      }
+      
+      const sourceDb = new sqlRef.current.Database(data as any);
       
       let imported = 0;
       const total = selectedIds.length;

@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { useOfflineTemplates } from '@/hooks/useOfflineTemplates';
 import { useCloudTemplates } from '@/hooks/useCloudTemplates';
 import { formatFileSize } from '@/lib/dataIntegrity';
+import { gzipCompress, gzipDecompress, isGzipped } from '@/lib/compression';
 
 interface ImportPreviewTemplate {
   id: string;
@@ -124,7 +125,7 @@ export function FlashDriveTransferDialog({
       }
 
       setExportProgress(90);
-      setExportStatus('Creating file...');
+      setExportStatus('Compressing with gzip...');
 
       // Generate filename
       let filename = 'templates';
@@ -138,11 +139,14 @@ export function FlashDriveTransferDialog({
         filename = `templates_${result.exportedTemplates.length}_${new Date().toISOString().split('T')[0]}`;
       }
 
-      const blob = new Blob([new Uint8Array(result.data)], { type: 'application/octet-stream' });
+      // Gzip compress the SQLite binary for smaller USB transfer
+      const compressed = await gzipCompress(new Uint8Array(result.data));
+
+      const blob = new Blob([compressed as any], { type: 'application/gzip' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${filename}.templatedb`;
+      a.download = `${filename}.templatedb.gz`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -151,9 +155,10 @@ export function FlashDriveTransferDialog({
       setExportProgress(100);
       setExportStatus('Complete!');
       
-      const sizeStr = formatFileSize(result.data.length);
+      const rawSize = formatFileSize(result.data.length);
+      const compressedSize = formatFileSize(compressed.byteLength);
       const costItemCount = result.costItemCount?.toLocaleString() || '0';
-      toast.success(`Exported ${result.exportedTemplates.length} template(s) (${costItemCount} cost items, ${sizeStr})`);
+      toast.success(`Exported ${result.exportedTemplates.length} template(s) (${costItemCount} cost items, ${rawSize} → ${compressedSize} compressed)`);
     } catch (err: any) {
       toast.error(err.message || 'Export failed');
     } finally {
@@ -167,8 +172,8 @@ export function FlashDriveTransferDialog({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.templatedb')) {
-      toast.error('Please select a .templatedb file');
+    if (!file.name.endsWith('.templatedb') && !file.name.endsWith('.templatedb.gz') && !file.name.endsWith('.gz')) {
+      toast.error('Please select a .templatedb or .templatedb.gz file');
       return;
     }
 
@@ -399,7 +404,7 @@ export function FlashDriveTransferDialog({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".templatedb"
+              accept=".templatedb,.templatedb.gz,.gz"
               className="hidden"
               onChange={handleFileSelect}
             />
@@ -414,9 +419,9 @@ export function FlashDriveTransferDialog({
                     <Upload className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <p className="font-medium">Select .templatedb file</p>
+                    <p className="font-medium">Select template file</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Click to browse for a template database file from flash drive
+                      Accepts .templatedb or .templatedb.gz (compressed) files
                     </p>
                   </div>
                 </div>
