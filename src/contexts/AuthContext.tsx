@@ -339,23 +339,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }, 0);
         } else {
-          // Session is null — could be a real logout OR a token refresh failure when offline.
+          // Session is null — could be a real logout OR a token refresh failure when offline/lie-fi.
           // CRITICAL: If offline and we have a cached user, DO NOT clear state.
           // A SIGNED_OUT event can fire when the token refresh request fails due to no network.
           // Clearing the user here would redirect to /auth even though the user is genuinely logged in.
-          if (!navigator.onLine) {
-            const cachedUserId = localStorage.getItem('cached_user_id');
-            if (cachedUserId) {
-              console.log('[Auth] Offline SIGNED_OUT ignored – preserving cached session');
-              const cached = readCachedRoles(cachedUserId);
-              setRoles(cached);
-              setRolesLoaded(true);
-              setIsLoading(false);
-              // DO NOT clear user/session — keep whatever we had
-              return;
-            }
+          const cachedUserId = localStorage.getItem('cached_user_id');
+
+          if (!navigator.onLine && cachedUserId) {
+            console.log('[Auth] Offline SIGNED_OUT ignored – preserving cached session');
+            const cached = readCachedRoles(cachedUserId);
+            setRoles(cached);
+            setRolesLoaded(true);
+            setIsLoading(false);
+            return;
           }
+
+          // Lie-fi guard: navigator says online but we never established a real session
+          // in this app lifecycle. This means the SIGNED_OUT is from a failed token refresh
+          // during cold start, NOT from a real user-initiated logout.
+          if (!sessionEstablishedRef.current && cachedUserId) {
+            console.log('[Auth] Cold-start SIGNED_OUT ignored (session never established, likely lie-fi)');
+            const cached = readCachedRoles(cachedUserId);
+            setRoles(cached);
+            setRolesLoaded(true);
+            setIsLoading(false);
+            return;
+          }
+
           // Online real logout — clear everything
+          sessionEstablishedRef.current = false;
           setSession(null);
           setUser(null);
           setRoles([]);
