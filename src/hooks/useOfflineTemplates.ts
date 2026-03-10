@@ -157,6 +157,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       sqlRef.current = SQL;
 
       const savedDb = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+      console.log(`[OfflineDB] IndexedDB data: ${savedDb ? `${(savedDb.byteLength / 1024).toFixed(0)} KB` : 'null (no saved DB)'}`);
+
       const savedMeta = await loadFromIndexedDB<SyncMeta>(SYNC_META_KEY);
 
       let database: Database;
