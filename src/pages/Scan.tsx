@@ -20,6 +20,7 @@ import { useOfflineTemplates, OfflineTemplate } from '@/hooks/useOfflineTemplate
 import { useLocalFDA, FDADrug } from '@/hooks/useLocalFDA';
 import { SyncButton } from '@/components/scanner/SyncButton';
 import { DeviceSyncDialog } from '@/components/scanner/DeviceSyncDialog';
+import { ManageDeviceDialog } from '@/components/scanner/ManageDeviceDialog';
 import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
 import { CostDataLookupDialog } from '@/components/scanner/CostDataLookupDialog';
 import { ScanSummaryTab } from '@/components/scanner/ScanSummaryTab';
