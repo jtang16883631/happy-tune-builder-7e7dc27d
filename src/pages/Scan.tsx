@@ -1640,7 +1640,8 @@ const Scan = () => {
       });
 
       // Generate filename with template name and date
-      const filename = `${selectedTemplate.name}_${dateStr}_scan.xlsx`;
+      const scannerSuffix = userShortName ? `_${userShortName}` : '';
+      const filename = `${selectedTemplate.name}_${dateStr}${scannerSuffix}_scan.xlsx`;
 
       // Inject logo into Summary sheet (index 0)
       const logoData = await fetchLogoImageData();
