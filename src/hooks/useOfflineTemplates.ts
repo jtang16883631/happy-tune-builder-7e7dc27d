@@ -219,15 +219,18 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
   // Initialize sql.js and load database
   useEffect(() => {
     const init = async () => {
+      console.log('[OfflineDB] useEffect init starting (component mount)');
       setIsLoading(true);
       initPromiseRef.current = doInit();
-      await initPromiseRef.current;
+      const result = await initPromiseRef.current;
+      console.log(`[OfflineDB] useEffect init complete, db=${result ? 'loaded' : 'null'}`);
       setIsLoading(false);
     };
 
     init();
 
     return () => {
+      console.log('[OfflineDB] useEffect cleanup (component unmount)');
       dbRef.current?.close();
     };
   }, []);
@@ -276,7 +279,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
   // Get all templates from local DB
   const getTemplates = useCallback((): OfflineTemplate[] => {
-    if (!db) return [];
+    if (!db) {
+      console.log('[OfflineDB] getTemplates: db is null, returning []');
+      return [];
+    }
 
     try {
       const results = db.exec(`
@@ -286,9 +292,12 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         ORDER BY inv_date DESC, name
       `);
 
-      if (results.length === 0) return [];
+      if (results.length === 0) {
+        console.log('[OfflineDB] getTemplates: query returned 0 rows');
+        return [];
+      }
 
-      return results[0].values.map((row: any[]) => ({
+      const templates = results[0].values.map((row: any[]) => ({
         id: row[0] as string,
         cloud_id: row[1] as string | null,
         user_id: row[2] as string,
@@ -303,8 +312,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         updated_at: row[11] as string,
         is_dirty: Boolean(row[12]),
       }));
+      console.log(`[OfflineDB] getTemplates: found ${templates.length} templates`);
+      return templates;
     } catch (err) {
-      console.error('Get templates error:', err);
+      console.error('[OfflineDB] getTemplates error:', err);
       return [];
     }
   }, [db]);
