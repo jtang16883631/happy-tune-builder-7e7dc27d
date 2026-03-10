@@ -152,7 +152,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
   const doInit = async (): Promise<Database | null> => {
     try {
       console.log('[OfflineDB] Starting sql.js init…');
-      const SQL = await initSqlSimple();
+      const SQL = await initSqlWithCache('OfflineDB');
       console.log('[OfflineDB] sql.js loaded successfully');
       sqlRef.current = SQL;
 
