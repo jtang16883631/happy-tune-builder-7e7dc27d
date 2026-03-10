@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import initSqlJs, { Database } from 'sql.js';
+import { initSqlWithCache } from '@/lib/wasmLoader';
 
 const DB_NAME = 'fda_database';
 const DB_STORE = 'sqlite_store';
@@ -101,15 +102,7 @@ export function useLocalFDA() {
   const sqlRef = useRef<any>(null);
 
   const initSqlSimple = async () => {
-    const localPath = `${import.meta.env.BASE_URL}sql-wasm.wasm`;
-    try {
-      return await initSqlJs({ locateFile: () => localPath });
-    } catch (localErr) {
-      console.warn('[FDA] Local WASM failed, trying CDN...', localErr);
-      return await initSqlJs({
-        locateFile: () => 'https://sql.js.org/dist/sql-wasm.wasm',
-      });
-    }
+    return initSqlWithCache('FDA');
   };
 
   // Initialize sql.js and load existing database
