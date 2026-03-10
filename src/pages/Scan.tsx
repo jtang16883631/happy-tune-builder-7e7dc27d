@@ -23,6 +23,7 @@ import { DeviceSyncDialog } from '@/components/scanner/DeviceSyncDialog';
 import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
 import { CostDataLookupDialog } from '@/components/scanner/CostDataLookupDialog';
 import { ScanSummaryTab } from '@/components/scanner/ScanSummaryTab';
+import { FlashDriveTransferDialog } from '@/components/scanner/FlashDriveTransferDialog';
 import { SectionPasswordDialog } from '@/components/scanner/SectionPasswordDialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
