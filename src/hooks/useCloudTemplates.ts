@@ -618,6 +618,19 @@ export function useCloudTemplates() {
           .in('id', ids);
 
         if (delErr) throw delErr;
+
+        // Safety: verify rows were actually deleted (RLS might silently block)
+        const { count: remaining } = await supabase
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .in('id', ids);
+
+        if (remaining && remaining === ids.length) {
+          // Nothing was deleted — RLS is blocking, bail out
+          console.warn(`[deleteBatched] RLS blocking deletes on ${table}, aborting`);
+          throw new Error(`Permission denied: cannot delete from ${table}`);
+        }
+
         if (rows.length < 500) break;
       }
     },
