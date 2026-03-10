@@ -43,11 +43,13 @@ interface ImportPreviewTemplate {
 interface FlashDriveTransferDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  isOnline?: boolean;
 }
 
 export function FlashDriveTransferDialog({
   open,
   onOpenChange,
+  isOnline = navigator.onLine,
 }: FlashDriveTransferDialogProps) {
   const [activeTab, setActiveTab] = useState<'export' | 'import'>('export');
   const [isExporting, setIsExporting] = useState(false);
@@ -70,13 +72,28 @@ export function FlashDriveTransferDialog({
   const { 
     templates: offlineTemplates,
     syncedTemplateIds,
+    exportToFlashDrive,
     exportCloudTemplatesToFlashDrive,
     previewFlashDriveImport,
     importFromFlashDrive,
-  } = useOfflineTemplates();
+  } = useOfflineTemplates(isOnline);
 
-  // Cloud templates — source of truth for the export list
+  // Cloud templates — only fetch when online
   const { templates: cloudTemplates, isLoading: isLoadingCloud } = useCloudTemplates();
+
+  // When online: show cloud templates (with on-device badge).
+  // When offline: show only local (on-device) templates.
+  const exportTemplateList = isOnline
+    ? cloudTemplates
+    : offlineTemplates.map(t => ({
+        id: t.id,
+        name: t.name,
+        facility_name: t.facility_name,
+        inv_date: t.inv_date,
+        inv_number: t.inv_number,
+      }));
+
+  const isLoadingExportList = isOnline ? isLoadingCloud : false;
 
   // Build a set of cloud IDs that are already downloaded to device
   const localCloudIds = new Set(syncedTemplateIds);
@@ -89,17 +106,17 @@ export function FlashDriveTransferDialog({
     }
   }, [open]);
 
-  const handleToggleExportTemplate = (cloudId: string) => {
+  const handleToggleExportTemplate = (id: string) => {
     setSelectedExportIds(prev =>
-      prev.includes(cloudId) ? prev.filter(x => x !== cloudId) : [...prev, cloudId]
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
   const handleSelectAllExport = () => {
-    if (selectedExportIds.length === cloudTemplates.length) {
+    if (selectedExportIds.length === exportTemplateList.length) {
       setSelectedExportIds([]);
     } else {
-      setSelectedExportIds(cloudTemplates.map(t => t.id));
+      setSelectedExportIds(exportTemplateList.map(t => t.id));
     }
   };
 
