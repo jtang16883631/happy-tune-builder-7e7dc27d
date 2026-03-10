@@ -183,7 +183,12 @@ export function useLocalFDA() {
     onProgress?: (processed: number, total: number) => void
   ): Promise<{ success: number; failed: number }> => {
     if (!sqlRef.current) {
-      throw new Error('SQL.js not initialized');
+      try {
+        const SQL = await initSqlSimple();
+        sqlRef.current = SQL;
+      } catch (e) {
+        throw new Error('SQL.js not initialized');
+      }
     }
 
     // Close existing database
