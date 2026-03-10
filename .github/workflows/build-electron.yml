@@ -31,32 +31,17 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Build Electron app (Windows)
-        if: matrix.platform == 'win'
+      - name: Build Electron app
         run: npx electron-builder --win --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Electron app (macOS)
-        if: matrix.platform == 'mac'
-        run: npx electron-builder --mac --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Electron app (Linux)
-        if: matrix.platform == 'linux'
-        run: npx electron-builder --linux --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-build
+          name: win-build
           path: |
             release/*.exe
-            release/*.dmg
-            release/*.AppImage
             release/*.yml
           if-no-files-found: ignore
 
@@ -84,8 +69,6 @@ jobs:
           prerelease: false
           files: |
             artifacts/**/*.exe
-            artifacts/**/*.dmg
-            artifacts/**/*.AppImage
             artifacts/**/*.yml
             artifacts/**/*.yaml
         env:
