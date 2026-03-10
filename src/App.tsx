@@ -153,14 +153,11 @@ function ProtectedRoute({
   // If offline on ANY route and we have a cached session, never redirect to auth.
   // The OfflineRedirect component will handle routing to /scan if needed.
   if (!isOnline && hasCachedSession) {
-    // Still loading? Show spinner only briefly, then render
-    if (isLoading || !rolesLoaded) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      );
-    }
+    // Offline with cached session — render immediately, don't block on auth loading.
+    // Auth will load cached roles in the background; blocking here causes hangs
+    // on cold start when navigator.onLine is true but there's no real internet.
+    return <>{children}</>;
+  }
     // Render children — OfflineRedirect will push non-offline routes to /scan
     return <>{children}</>;
   }
