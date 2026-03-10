@@ -376,7 +376,7 @@ const Scan = () => {
     }, 0);
   }, [scanRows]);
 
-  const hasRole = roles.length > 0;
+  const hasRole = roles.length > 0 || !isOnline;
 
   // Validation: Check if a row has all required fields filled
   // QTY, MIS Divisor, MIS Count Method are ALL required
