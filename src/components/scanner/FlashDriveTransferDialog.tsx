@@ -131,14 +131,38 @@ export function FlashDriveTransferDialog({
     setExportStatus('Preparing export...');
 
     try {
-      const result = await exportCloudTemplatesToFlashDrive(
-        selectedExportIds,
-        (msg) => { setExportStatus(msg); setExportProgress(prev => Math.min(prev + 15, 85)); }
-      );
+      let exportData: Uint8Array;
+      let exportedCount: number;
+      let costItemCount: number;
+      let exportedTemplatesMeta: Array<{ inv_number?: string | null; facility_name?: string | null }>;
 
-      if (!result || result.exportedTemplates.length === 0) {
-        toast.error('Export failed - no data available');
-        return;
+      if (isOnline) {
+        // Online: use cloud export (can fetch cloud-only templates)
+        const result = await exportCloudTemplatesToFlashDrive(
+          selectedExportIds,
+          (msg) => { setExportStatus(msg); setExportProgress(prev => Math.min(prev + 15, 85)); }
+        );
+        if (!result || result.exportedTemplates.length === 0) {
+          toast.error('Export failed - no data available');
+          return;
+        }
+        exportData = new Uint8Array(result.data);
+        exportedCount = result.exportedTemplates.length;
+        costItemCount = result.costItemCount;
+        exportedTemplatesMeta = result.exportedTemplates;
+      } else {
+        // Offline: export directly from local SQLite
+        setExportStatus('Exporting from device...');
+        setExportProgress(50);
+        const result = exportToFlashDrive(selectedExportIds);
+        if (!result || result.templates.length === 0) {
+          toast.error('Export failed - no local data available');
+          return;
+        }
+        exportData = result.data;
+        exportedCount = result.templates.length;
+        costItemCount = result.costItemCount;
+        exportedTemplatesMeta = result.templates;
       }
 
       setExportProgress(90);
@@ -146,18 +170,18 @@ export function FlashDriveTransferDialog({
 
       // Generate filename
       let filename = 'templates';
-      if (result.exportedTemplates.length === 1) {
-        const t = result.exportedTemplates[0];
+      if (exportedTemplatesMeta.length === 1) {
+        const t = exportedTemplatesMeta[0];
         const parts: string[] = [];
         if (t.inv_number) parts.push(t.inv_number.replace(/[^a-zA-Z0-9]/g, ''));
         if (t.facility_name) parts.push(t.facility_name.replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_'));
         if (parts.length > 0) filename = parts.join('_');
       } else {
-        filename = `templates_${result.exportedTemplates.length}_${new Date().toISOString().split('T')[0]}`;
+        filename = `templates_${exportedCount}_${new Date().toISOString().split('T')[0]}`;
       }
 
       // Gzip compress the SQLite binary for smaller USB transfer
-      const compressed = await gzipCompress(new Uint8Array(result.data));
+      const compressed = await gzipCompress(exportData);
 
       const blob = new Blob([compressed as any], { type: 'application/gzip' });
       const url = URL.createObjectURL(blob);
@@ -172,10 +196,9 @@ export function FlashDriveTransferDialog({
       setExportProgress(100);
       setExportStatus('Complete!');
       
-      const rawSize = formatFileSize(result.data.length);
+      const rawSize = formatFileSize(exportData.length);
       const compressedSize = formatFileSize(compressed.byteLength);
-      const costItemCount = result.costItemCount?.toLocaleString() || '0';
-      toast.success(`Exported ${result.exportedTemplates.length} template(s) (${costItemCount} cost items, ${rawSize} → ${compressedSize} compressed)`);
+      toast.success(`Exported ${exportedCount} template(s) (${costItemCount.toLocaleString()} cost items, ${rawSize} → ${compressedSize} compressed)`);
     } catch (err: any) {
       toast.error(err.message || 'Export failed');
     } finally {
