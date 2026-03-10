@@ -227,12 +227,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Cache user ID for offline flash drive import
           localStorage.setItem('cached_user_id', existingSession.user.id);
 
-          await ensureProfileExists(existingSession.user);
-          const userRoles = await fetchUserRoles(existingSession.user.id);
-          if (isMounted) {
-            setRoles(userRoles);
-            setRolesLoaded(true);
-            writeCachedRoles(existingSession.user.id, userRoles);
+          // Wrap profile/role fetches in a timeout so they don't hang
+          // indefinitely when navigator.onLine is true but there's no real internet.
+          const profileRoleTimeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Profile/role fetch timeout')), 6000)
+          );
+          try {
+            await Promise.race([
+              (async () => {
+                await ensureProfileExists(existingSession.user);
+                const userRoles = await fetchUserRoles(existingSession.user.id);
+                if (isMounted) {
+                  setRoles(userRoles);
+                  setRolesLoaded(true);
+                  writeCachedRoles(existingSession.user.id, userRoles);
+                }
+              })(),
+              profileRoleTimeout,
+            ]);
+          } catch (profileErr) {
+            console.warn('[Auth] Profile/role fetch timed out, using cache:', profileErr);
+            if (isMounted) {
+              const cached = readCachedRoles(existingSession.user.id);
+              setRoles(cached);
+              setRolesLoaded(true);
+            }
           }
         } else {
           // No session = no roles to load
@@ -287,18 +306,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setTimeout(async () => {
             if (!isMounted) return;
 
+            const roleTimeout = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Auth state change timeout')), 6000)
+            );
             try {
-              await ensureProfileExists(newSession.user);
-              const userRoles = await fetchUserRoles(newSession.user.id);
-              if (isMounted) {
-                setRoles(userRoles);
-                setRolesLoaded(true);
-                writeCachedRoles(newSession.user.id, userRoles);
-                setIsLoading(false);
-              }
+              await Promise.race([
+                (async () => {
+                  await ensureProfileExists(newSession.user);
+                  const userRoles = await fetchUserRoles(newSession.user.id);
+                  if (isMounted) {
+                    setRoles(userRoles);
+                    setRolesLoaded(true);
+                    writeCachedRoles(newSession.user.id, userRoles);
+                    setIsLoading(false);
+                  }
+                })(),
+                roleTimeout,
+              ]);
             } catch (err) {
-              console.error('Error in auth state change:', err);
+              console.warn('Auth state change: profile/role fetch failed or timed out:', err);
               if (isMounted) {
+                const cached = readCachedRoles(newSession.user.id);
+                setRoles(cached.length > 0 ? cached : roles);
                 setRolesLoaded(true);
                 setIsLoading(false);
               }
