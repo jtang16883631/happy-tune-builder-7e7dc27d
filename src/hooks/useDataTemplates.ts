@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import initSqlJs, { Database } from 'sql.js';
+import { Database } from 'sql.js';
+import { initSqlWithCache } from '@/lib/wasmLoader';
 import { 
   createExportMetadata, 
   validateImport, 
