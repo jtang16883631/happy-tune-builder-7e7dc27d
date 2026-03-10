@@ -678,7 +678,9 @@ export function useCloudTemplates() {
         await fetchTemplates();
         return { success: true };
       } catch (err: any) {
-        return { success: false, error: err.message };
+        const msg = err?.message || err?.details || String(err) || 'Unknown error';
+        console.error('[deleteTemplate] Error:', msg);
+        return { success: false, error: msg };
       }
     },
     [fetchTemplates, deleteBatched]
