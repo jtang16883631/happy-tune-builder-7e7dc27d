@@ -20,6 +20,7 @@ import { useOfflineTemplates, OfflineTemplate } from '@/hooks/useOfflineTemplate
 import { useLocalFDA, FDADrug } from '@/hooks/useLocalFDA';
 import { SyncButton } from '@/components/scanner/SyncButton';
 import { DeviceSyncDialog } from '@/components/scanner/DeviceSyncDialog';
+import { ManageDeviceDialog } from '@/components/scanner/ManageDeviceDialog';
 import { OuterNDCSelectionDialog, OuterNDCOption } from '@/components/scanner/OuterNDCSelectionDialog';
 import { CostDataLookupDialog } from '@/components/scanner/CostDataLookupDialog';
 import { ScanSummaryTab } from '@/components/scanner/ScanSummaryTab';
@@ -217,6 +218,8 @@ const Scan = () => {
 
   // State for download to device dialog
   const [deviceSyncDialogOpen, setDeviceSyncDialogOpen] = useState(false);
+  // State for manage device dialog
+  const [manageDeviceDialogOpen, setManageDeviceDialogOpen] = useState(false);
   // State for flash drive transfer dialog
   const [flashDriveDialogOpen, setFlashDriveDialogOpen] = useState(false);
 
@@ -2747,6 +2750,15 @@ const Scan = () => {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setManageDeviceDialogOpen(true)}
+                className="gap-2"
+              >
+                <Smartphone className="h-4 w-4" />
+                <span className="hidden sm:inline">Manage Device</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setFlashDriveDialogOpen(true)}
                 className="gap-2"
               >
@@ -2822,6 +2834,16 @@ const Scan = () => {
             onSyncTemplates={syncSelectedTemplates}
             isSyncing={isSyncing}
             syncProgress={syncProgress}
+          />
+
+          {/* Manage Device Dialog */}
+          <ManageDeviceDialog
+            open={manageDeviceDialogOpen}
+            onOpenChange={setManageDeviceDialogOpen}
+            localTemplates={offlineTemplates}
+            getTemplateCostItemCount={getTemplateCostItemCount}
+            onDelete={deleteLocalTemplate}
+            onRefresh={() => {}}
           />
 
           {/* Flash Drive Transfer Dialog */}
