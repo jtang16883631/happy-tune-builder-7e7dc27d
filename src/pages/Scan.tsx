@@ -2819,6 +2819,12 @@ const Scan = () => {
             syncProgress={syncProgress}
           />
 
+          {/* Flash Drive Transfer Dialog */}
+          <FlashDriveTransferDialog
+            open={flashDriveDialogOpen}
+            onOpenChange={setFlashDriveDialogOpen}
+            isOnline={isOnline}
+          />
 
           {sortedTemplates.length === 0 ? (
             <Card className="border-dashed max-w-md mx-auto">
