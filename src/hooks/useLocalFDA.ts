@@ -100,16 +100,26 @@ export function useLocalFDA() {
   const [error, setError] = useState<string | null>(null);
   const sqlRef = useRef<any>(null);
 
+  const initSqlSimple = async () => {
+    const localPath = `${import.meta.env.BASE_URL}sql-wasm.wasm`;
+    try {
+      return await initSqlJs({ locateFile: () => localPath });
+    } catch (localErr) {
+      console.warn('[FDA] Local WASM failed, trying CDN...', localErr);
+      return await initSqlJs({
+        locateFile: () => 'https://sql.js.org/dist/sql-wasm.wasm',
+      });
+    }
+  };
+
   // Initialize sql.js and load existing database
   useEffect(() => {
     const init = async () => {
       try {
         setIsLoading(true);
         
-        // Initialize sql.js with WASM
-        const SQL = await initSqlJs({
-          locateFile: (file: string) => `${import.meta.env.BASE_URL}${file}`,
-        });
+        // Initialize sql.js with WASM (with CDN fallback)
+        const SQL = await initSqlSimple();
         sqlRef.current = SQL;
 
         // Try to load existing database from IndexedDB
@@ -173,7 +183,12 @@ export function useLocalFDA() {
     onProgress?: (processed: number, total: number) => void
   ): Promise<{ success: number; failed: number }> => {
     if (!sqlRef.current) {
-      throw new Error('SQL.js not initialized');
+      try {
+        const SQL = await initSqlSimple();
+        sqlRef.current = SQL;
+      } catch (e) {
+        throw new Error('SQL.js not initialized');
+      }
     }
 
     // Close existing database
@@ -671,8 +686,14 @@ export function useLocalFDA() {
     file: File,
     onProgress?: (status: string) => void
   ): Promise<boolean> => {
+    // Lazy-init sql.js if not ready yet
     if (!sqlRef.current) {
-      throw new Error('SQL.js not initialized');
+      try {
+        const SQL = await initSqlSimple();
+        sqlRef.current = SQL;
+      } catch (e) {
+        throw new Error('SQL.js not initialized');
+      }
     }
 
     try {
