@@ -156,10 +156,6 @@ function ProtectedRoute({
     // Offline with cached session — render immediately, don't block on auth loading.
     // Auth will load cached roles in the background; blocking here causes hangs
     // on cold start when navigator.onLine is true but there's no real internet.
-    return <>{children}</>;
-  }
-    // Render children — OfflineRedirect will push non-offline routes to /scan
-    return <>{children}</>;
   }
 
   // While auth is loading online
