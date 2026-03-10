@@ -25,7 +25,7 @@ const Auth = () => {
         description: 'Google sign-in requires an internet connection. Redirecting to offline mode...',
         variant: 'destructive',
       });
-      setTimeout(() => navigate('/offline-scan', { replace: true }), 1500);
+      setTimeout(() => navigate('/scan', { replace: true }), 1500);
       return;
     }
     const { error } = await signInWithGoogle();
