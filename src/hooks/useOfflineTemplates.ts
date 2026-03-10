@@ -309,8 +309,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         updated_at: row[11] as string,
         is_dirty: Boolean(row[12]),
       }));
+      console.log(`[OfflineDB] getTemplates: found ${templates.length} templates`);
+      return templates;
     } catch (err) {
-      console.error('Get templates error:', err);
+      console.error('[OfflineDB] getTemplates error:', err);
       return [];
     }
   }, [db]);
