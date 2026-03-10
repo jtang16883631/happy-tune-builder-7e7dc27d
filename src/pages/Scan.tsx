@@ -2750,6 +2750,15 @@ const Scan = () => {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setManageDeviceDialogOpen(true)}
+                className="gap-2"
+              >
+                <Smartphone className="h-4 w-4" />
+                <span className="hidden sm:inline">Manage Device</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setFlashDriveDialogOpen(true)}
                 className="gap-2"
               >
