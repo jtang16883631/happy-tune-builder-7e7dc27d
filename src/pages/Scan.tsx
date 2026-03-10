@@ -1990,6 +1990,7 @@ const Scan = () => {
       const masterWorksheet = XLSX.utils.aoa_to_sheet(masterRows);
       // Apply validation styling to master sheet
       applyValidationStylesToWorksheet(masterWorksheet, masterRows, 1);
+      applyExcelHeaderAndDataStyles(masterWorksheet, masterRows);
       // Apply formulas to master sheet
       const masterDataRowCount = masterRows.length - 1;
       applyExcelFormulas(masterWorksheet, masterDataRowCount, 1);
