@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import initSqlJs, { Database } from 'sql.js';
+import { Database } from 'sql.js';
+import { initSqlWithCache } from '@/lib/wasmLoader';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -106,9 +107,7 @@ export function useOfflineIssues() {
       try {
         setIsLoading(true);
         
-        const SQL = await initSqlJs({
-          locateFile: (file: string) => `${import.meta.env.BASE_URL}${file}`,
-        });
+        const SQL = await initSqlWithCache('Issues');
         sqlRef.current = SQL;
 
         const savedDb = await loadFromIndexedDB<Uint8Array>(DB_KEY);
