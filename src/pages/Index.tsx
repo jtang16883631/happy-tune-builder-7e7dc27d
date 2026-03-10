@@ -370,13 +370,21 @@ const Index = () => {
 
 
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteProgress, setDeleteProgress] = useState({ current: 0, total: 0, name: '' });
 
   const handleDeleteSelected = async () => {
     setIsDeleting(true);
     const errors: string[] = [];
     let successCount = 0;
+    const templateIds = Array.from(selectedTemplates);
+    setDeleteProgress({ current: 0, total: templateIds.length, name: '' });
 
-    for (const templateId of Array.from(selectedTemplates)) {
+    for (let i = 0; i < templateIds.length; i++) {
+      const templateId = templateIds[i];
+      // Find template name for display
+      const tmpl = templates?.find((t: any) => t.id === templateId);
+      setDeleteProgress({ current: i + 1, total: templateIds.length, name: tmpl?.name || `Template ${i + 1}` });
+      
       const result = await deleteTemplate(templateId);
       if (result.success) {
         successCount++;
