@@ -124,29 +124,45 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
   setCellStyle(ws, 'B15', { font: FONT_ARIAL_10_BOLD });
 
   // -- Style: Row 16 Table header --
+  // Determine border positions for outer-only borders on the section block
   const headerStyle = {
     font: { ...FONT_ARIAL_10_BOLD, color: { rgb: WHITE } },
     fill: { fgColor: { rgb: HEADER_BG } },
     alignment: { horizontal: 'center' as const },
-    border: thinBorder(BLACK),
   };
-  ws['B16'] = { t: 's', v: 'Sections', s: headerStyle };
-  ws['C16'] = { t: 's', v: 'Value', s: { ...headerStyle, alignment: { horizontal: 'center' as const } } };
+  // Header B16: top+left+right border (outer top-left of block)
+  ws['B16'] = { t: 's', v: 'Sections', s: {
+    ...headerStyle,
+    border: {
+      top: thinSide(BLACK), left: thinSide(BLACK), right: thinSide(BLACK),
+    },
+  }};
+  // Header C16: top+right border (outer top-right of block)
+  ws['C16'] = { t: 's', v: 'Value', s: {
+    ...headerStyle,
+    border: {
+      top: thinSide(BLACK), right: thinSide(BLACK),
+    },
+  }};
 
-  // -- Section rows --
+  // -- Section rows (outer border only on the block edges, no internal borders) --
+  const lastIdx = sectionSheetNames.length - 1;
   sectionSheetNames.forEach((sheetName, index) => {
     const rowNum = sectionStartRow + index;
     const escapedName = sheetName.replace(/'/g, "''");
-    const isEvenRow = index % 2 === 1; // 0-based: row 0=white, row 1=alt, row 2=white...
+    const isEvenRow = index % 2 === 1;
     const rowBg = isEvenRow ? ALT_ROW_BG : undefined;
+    const isLast = index === lastIdx;
 
-    const baseCellStyle: any = {
-      font: { ...FONT_ARIAL_10 },
-      border: thinBorder('D9D9D9'),
-    };
-    if (rowBg) {
-      baseCellStyle.fill = { fgColor: { rgb: rowBg } };
+    // Build border: left on B, right on C, bottom only on last row
+    const borderB: any = { left: thinSide(BLACK) };
+    const borderC: any = { right: thinSide(BLACK) };
+    if (isLast) {
+      borderB.bottom = thinSide(BLACK);
+      borderC.bottom = thinSide(BLACK);
     }
+
+    const baseFill = rowBg ? { fill: { fgColor: { rgb: rowBg } } } : {};
 
     // Section name with hyperlink (column B)
     ws[`B${rowNum}`] = {
@@ -154,20 +170,23 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
       v: sheetName,
       l: { Target: `#'${escapedName}'!A1`, Tooltip: `Go to ${sheetName}` },
       s: {
-        ...baseCellStyle,
         font: { ...FONT_ARIAL_10, color: { rgb: LINK_BLUE }, underline: true },
+        border: borderB,
+        ...baseFill,
       },
     };
 
-    // Value formula with accounting format (column C - $ left, number right in same cell)
+    // Value formula with accounting format (column C)
     const valueFormula = `'${escapedName}'!${getColLetter(COLUMN_INDICES.SUM_COLUMN)}1`;
     ws[`C${rowNum}`] = {
       t: 'n',
       f: valueFormula,
       z: ACCOUNTING_FMT,
       s: {
-        ...baseCellStyle,
+        font: { ...FONT_ARIAL_10 },
         numFmt: ACCOUNTING_FMT,
+        border: borderC,
+        ...baseFill,
       },
     };
   });
@@ -189,7 +208,6 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
     },
   };
 
-  // Only C cell of total row gets the background (not A or B)
   ws[`C${totalRow}`] = {
     t: 'n',
     f: `SUM(C${firstSectionRow}:C${lastSectionRow})`,
