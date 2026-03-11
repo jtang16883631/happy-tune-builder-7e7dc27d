@@ -61,7 +61,7 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
   rows.push(['', dateStr]);
 
   // Row 16: Table header (col B=Sections, C=Value)
-  rows.push(['', 'Sections', '', 'Value']);
+  rows.push(['', 'Sections', 'Value']);
 
   // Row 17+: Section rows (placeholders)
   const sectionStartRow = 17;
@@ -103,18 +103,15 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
   ws['!cols'] = [
     { wch: 5.57 },  // A: empty spacer
     { wch: 39.86 }, // B: Sections
-    { wch: 17 },    // C: Value ($)
-    { wch: 17 },    // D: Value (number)
+    { wch: 17 },    // C: Value (accounting format: $ left, number right)
   ];
 
   // -- Merge cells --
   ws['!merges'] = [
-    // Row 13-15: facility/address/date span B-D
-    { s: { r: 12, c: 1 }, e: { r: 12, c: 3 } },
-    { s: { r: 13, c: 1 }, e: { r: 13, c: 3 } },
-    { s: { r: 14, c: 1 }, e: { r: 14, c: 3 } },
-    // Row 16 header: "Sections" spans B-C
-    { s: { r: 15, c: 1 }, e: { r: 15, c: 2 } },
+    // Row 13-15: facility/address/date span B-C
+    { s: { r: 12, c: 1 }, e: { r: 12, c: 2 } },
+    { s: { r: 13, c: 1 }, e: { r: 13, c: 2 } },
+    { s: { r: 14, c: 1 }, e: { r: 14, c: 2 } },
   ];
 
   // -- Style: Row 13 Facility name (bold Arial 10) --
@@ -134,8 +131,7 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
     border: thinBorder(BLACK),
   };
   ws['B16'] = { t: 's', v: 'Sections', s: headerStyle };
-  ws['C16'] = { t: 's', v: '', s: headerStyle }; // merged with B
-  ws['D16'] = { t: 's', v: 'Value', s: { ...headerStyle, alignment: { horizontal: 'center' as const } } };
+  ws['C16'] = { t: 's', v: 'Value', s: { ...headerStyle, alignment: { horizontal: 'center' as const } } };
 
   // -- Section rows --
   sectionSheetNames.forEach((sheetName, index) => {
@@ -163,19 +159,15 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
       },
     };
 
-    // Column C: $ sign area (keep background)
-    ws[`C${rowNum}`] = { t: 's', v: '$', s: baseCellStyle };
-
-    // Value formula with accounting format (column D)
+    // Value formula with accounting format (column C - $ left, number right in same cell)
     const valueFormula = `'${escapedName}'!${getColLetter(COLUMN_INDICES.SUM_COLUMN)}1`;
-    ws[`D${rowNum}`] = {
+    ws[`C${rowNum}`] = {
       t: 'n',
       f: valueFormula,
       z: ACCOUNTING_FMT,
       s: {
         ...baseCellStyle,
         numFmt: ACCOUNTING_FMT,
-        alignment: { horizontal: 'right' as const },
       },
     };
   });
@@ -197,11 +189,10 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
     },
   };
 
-  // Only C and D cells of total row get the background
-  ws[`C${totalRow}`] = { t: 's', v: '$', s: { font: { ...FONT_ARIAL_10 }, fill: { fgColor: { rgb: TOTAL_BG } }, border: { top: { style: 'medium', color: { rgb: BLACK } }, bottom: { style: 'medium', color: { rgb: BLACK } }, left: { style: 'medium', color: { rgb: BLACK } } } } };
-  ws[`D${totalRow}`] = {
+  // Only C cell of total row gets the background (not A or B)
+  ws[`C${totalRow}`] = {
     t: 'n',
-    f: `SUM(D${firstSectionRow}:D${lastSectionRow})`,
+    f: `SUM(C${firstSectionRow}:C${lastSectionRow})`,
     z: ACCOUNTING_FMT,
     s: totalStyle,
   };
@@ -232,7 +223,7 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
 
   // Update worksheet range
   const lastRow = sigRow + 2;
-  ws['!ref'] = `A1:E${lastRow}`;
+  ws['!ref'] = `A1:C${lastRow}`;
 
   return ws;
 }
