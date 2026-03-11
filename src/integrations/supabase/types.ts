@@ -284,6 +284,7 @@ export type Database = {
       }
       data_templates: {
         Row: {
+          address: string | null
           cost_file_name: string | null
           created_at: string | null
           facility_name: string | null
@@ -297,6 +298,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          address?: string | null
           cost_file_name?: string | null
           created_at?: string | null
           facility_name?: string | null
@@ -310,6 +312,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          address?: string | null
           cost_file_name?: string | null
           created_at?: string | null
           facility_name?: string | null
