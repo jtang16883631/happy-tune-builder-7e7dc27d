@@ -103,8 +103,7 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
   ws['!cols'] = [
     { wch: 5.57 },  // A: empty spacer
     { wch: 39.86 }, // B: Sections
-    { wch: 17 },    // C: Value ($)
-    { wch: 17 },    // D: Value (number)
+    { wch: 17 },    // C: Value (accounting format: $ left, number right)
   ];
 
   // -- Merge cells --
