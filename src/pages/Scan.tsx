@@ -448,8 +448,11 @@ const Scan = () => {
 
   // Check for last scan location on initial load (passive display only)
   useEffect(() => {
-    // Only check once when templates are loaded and no template is selected yet
-    if (templatesLoading || selectedTemplate) return;
+    // Wait for BOTH cloud and offline loading to complete before checking
+    const isStillLoading = (isOnline && (templatesLoading || authLoading)) || offlineLoading;
+    if (isStillLoading || selectedTemplate) return;
+    // Also wait until templates are actually populated (prevents premature empty check)
+    if (templates.length === 0) return;
     
     const savedLocation = localStorage.getItem('last_scan_location');
     if (savedLocation) {
@@ -464,7 +467,7 @@ const Scan = () => {
         // Ignore parse errors
       }
     }
-  }, [templatesLoading, selectedTemplate, templates]);
+  }, [templatesLoading, authLoading, offlineLoading, isOnline, selectedTemplate, templates]);
 
   // Update LOC field when section changes (for empty rows only)
   useEffect(() => {
