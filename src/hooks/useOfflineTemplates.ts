@@ -521,6 +521,23 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       await updateSyncMeta({ lastSyncedAt: new Date().toISOString() });
       _notify(); // notify all subscribers
 
+      // Save offline manifest to localStorage for cold start verification
+      try {
+        const allTemplates = activeDb.exec('SELECT id, name FROM templates');
+        if (allTemplates.length > 0) {
+          const manifest = {
+            templateCount: allTemplates[0].values.length,
+            templateIds: allTemplates[0].values.map(r => r[0]),
+            lastSyncedAt: new Date().toISOString(),
+            offlineReady: true,
+          };
+          localStorage.setItem('offline_manifest', JSON.stringify(manifest));
+          console.log(`[OfflineDB] Offline manifest saved: ${manifest.templateCount} templates`);
+        }
+      } catch (manifestErr) {
+        console.warn('[OfflineDB] Failed to save offline manifest:', manifestErr);
+      }
+
       setSyncProgress(prev => ({ ...prev, status: 'complete', currentTemplate: null }));
       return { success: true, synced: synced + (templateIds.length - toAdd.length) };
     } catch (err: any) {
