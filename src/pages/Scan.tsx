@@ -1512,14 +1512,14 @@ const Scan = () => {
         }
       }
 
-      // Column headers matching the scan table (SUM column will be populated by formula)
+      // Column headers matching the scan page UI order
       const headers = [
-        'LOC', 'Device', 'REC', 'TIME', 'NDC', 'Scanned NDC', 'QTY', 'MIS Divisor',
+        'LOC', 'Device', 'REC', 'TIME', 'Priced NDC/UPC', 'Original NDC', 'QTY', 'MIS Divisor',
         'MIS Count Method', 'Item Number', 'Med Desc', 'MERIDIAN DESC', 'TRADE',
         'GENERIC', 'STRENGTH', 'PACK SZ', 'FDA SIZE', 'SIZE TXT', 'DOSE FORM',
         'MANUFACTURER', 'GENERIC CODE', 'DEA CLASS', 'AHFS', 'SOURCE', 'Pack Cost',
         'Unit Cost', 'Extended', '', 'Sheet Type', 'Audit Criteria', 'Original QTY',
-        'Auditor Initials', 'Results', 'Additional Notes'
+        'Auditor Initials', 'Results', 'Additional Notes', 'Expiration Date', 'Lot #'
       ];
 
       // Iterate through all sections
@@ -1539,13 +1539,13 @@ const Scan = () => {
                 sectionTotal += record.extended;
               }
               
-              rows.push([
+               rows.push([
                 record.loc || '',
                 record.device || '',
                 record.rec || '',
                 record.time || '',
-                record.ndc || '',
                 record.scannedNdc || '',
+                record.ndc || '',
                 record.qty ?? '',
                 record.misDivisor ?? '',
                 record.misCountMethod || '',
@@ -1574,6 +1574,8 @@ const Scan = () => {
                 record.auditorInitials || '',
                 record.results || '',
                 record.additionalNotes || '',
+                record.expirationDate || '',
+                record.lotNumber || '',
               ]);
             });
         }
@@ -1864,14 +1866,14 @@ const Scan = () => {
       // Track section totals for summary
       const sectionTotals: { section: string; count: number; value: number }[] = [];
 
-      // Column headers (SUM column will be populated by formula)
+      // Column headers matching the scan page UI order
       const headers = [
-        'LOC', 'Device', 'REC', 'TIME', 'NDC', 'Scanned NDC', 'QTY', 'MIS Divisor',
+        'LOC', 'Device', 'REC', 'TIME', 'Priced NDC/UPC', 'Original NDC', 'QTY', 'MIS Divisor',
         'MIS Count Method', 'Item Number', 'Med Desc', 'MERIDIAN DESC', 'TRADE',
         'GENERIC', 'STRENGTH', 'PACK SZ', 'FDA SIZE', 'SIZE TXT', 'DOSE FORM',
         'MANUFACTURER', 'GENERIC CODE', 'DEA CLASS', 'AHFS', 'SOURCE', 'Pack Cost',
         'Unit Cost', 'Extended', '', 'Sheet Type', 'Audit Criteria', 'Original QTY',
-        'Auditor Initials', 'Results', 'Additional Notes'
+        'Auditor Initials', 'Results', 'Additional Notes', 'Expiration Date', 'Lot #'
       ];
       
       // Collect all records for Master sheet
@@ -1908,8 +1910,8 @@ const Scan = () => {
               record.device || '',
               record.rec || '',
               record.time || '',
-              record.ndc || '',
               record.scanned_ndc || '',
+              record.ndc || '',
               record.qty ?? '',
               record.mis_divisor ?? '',
               record.mis_count_method || '',
@@ -1938,6 +1940,8 @@ const Scan = () => {
               record.auditor_initials || '',
               record.results || '',
               record.additional_notes || '',
+              '', // Expiration Date (not in cloud schema yet)
+              '', // Lot # (not in cloud schema yet)
             ];
             rows.push(rowData);
             allMasterRows.push(rowData);
