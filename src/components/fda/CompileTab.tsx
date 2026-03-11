@@ -224,6 +224,14 @@ export function CompileTab() {
         const dataRowCount = processedData.length;
         applyExcelFormulas(ws, dataRowCount, 1);
         
+        // Hide columns B, M, N, O, R, S, U, V, W on section sheets
+        const hiddenCols = new Set([1, 12, 13, 14, 17, 18, 20, 21, 22]);
+        const totalCols = sheetData[0]?.length || 0;
+        ws['!cols'] = Array.from({ length: totalCols }, (_, i) => ({
+          wch: 15,
+          hidden: hiddenCols.has(i),
+        }));
+
         // Truncate sheet name to 31 chars (Excel limit)
         const safeSheetName = file.sheetName.slice(0, 31);
         sectionSheetNames.push(safeSheetName);
