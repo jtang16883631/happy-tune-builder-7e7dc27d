@@ -1512,14 +1512,14 @@ const Scan = () => {
         }
       }
 
-      // Column headers matching the scan table (SUM column will be populated by formula)
+      // Column headers matching the scan page UI order
       const headers = [
-        'LOC', 'Device', 'REC', 'TIME', 'NDC', 'Scanned NDC', 'QTY', 'MIS Divisor',
+        'LOC', 'Device', 'REC', 'TIME', 'Priced NDC/UPC', 'Original NDC', 'QTY', 'MIS Divisor',
         'MIS Count Method', 'Item Number', 'Med Desc', 'MERIDIAN DESC', 'TRADE',
         'GENERIC', 'STRENGTH', 'PACK SZ', 'FDA SIZE', 'SIZE TXT', 'DOSE FORM',
         'MANUFACTURER', 'GENERIC CODE', 'DEA CLASS', 'AHFS', 'SOURCE', 'Pack Cost',
         'Unit Cost', 'Extended', '', 'Sheet Type', 'Audit Criteria', 'Original QTY',
-        'Auditor Initials', 'Results', 'Additional Notes'
+        'Auditor Initials', 'Results', 'Additional Notes', 'Expiration Date', 'Lot #'
       ];
 
       // Iterate through all sections
