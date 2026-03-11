@@ -33,14 +33,14 @@ export async function injectImageIntoXlsx(
   <xdr:twoCellAnchor editAs="oneCell">
     <xdr:from>
       <xdr:col>0</xdr:col>
-      <xdr:colOff>100000</xdr:colOff>
-      <xdr:row>0</xdr:row>
+      <xdr:colOff>200000</xdr:colOff>
+      <xdr:row>1</xdr:row>
       <xdr:rowOff>50000</xdr:rowOff>
     </xdr:from>
     <xdr:to>
-      <xdr:col>1</xdr:col>
-      <xdr:colOff>1200000</xdr:colOff>
-      <xdr:row>3</xdr:row>
+      <xdr:col>2</xdr:col>
+      <xdr:colOff>1500000</xdr:colOff>
+      <xdr:row>6</xdr:row>
       <xdr:rowOff>100000</xdr:rowOff>
     </xdr:to>
     <xdr:pic>
