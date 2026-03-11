@@ -247,9 +247,20 @@ const Scan = () => {
     sectionName: string;
   } | null>(null);
 
-  // Use cloud templates when online, offline templates when offline
-  const templates = isOnline ? cloudTemplates : offlineTemplates as unknown as CloudTemplate[];
-  console.log(`[Scan] isOnline=${isOnline}, offlineLoading=${offlineLoading}, offlineDbReady=${offlineDbReady}, templates.length=${templates.length}, source=${isOnline ? 'cloud' : 'offline'}`);
+  // Use cloud templates when online, offline templates when offline.
+  // IMPORTANT: When online but cloud templates are still loading/empty (e.g. auth in progress),
+  // fall back to offline templates to prevent flash of empty state on cold start.
+  const templates = useMemo(() => {
+    if (!isOnline) return offlineTemplates as unknown as CloudTemplate[];
+    if (cloudTemplates.length > 0) return cloudTemplates;
+    // Online but cloud empty — use offline templates as fallback while loading
+    if ((offlineTemplates as unknown as CloudTemplate[]).length > 0) {
+      return offlineTemplates as unknown as CloudTemplate[];
+    }
+    return cloudTemplates;
+  }, [isOnline, cloudTemplates, offlineTemplates]);
+  const templateSource = isOnline && cloudTemplates.length > 0 ? 'cloud' : (offlineTemplates as unknown as CloudTemplate[]).length > 0 ? 'offline' : 'cloud';
+  console.log(`[Scan] isOnline=${isOnline}, offlineLoading=${offlineLoading}, offlineDbReady=${offlineDbReady}, templates.length=${templates.length}, source=${templateSource}`);
   const getCostItemByNDC = isOnline ? cloudGetCostItemByNDC : offlineGetCostItemByNDC as typeof cloudGetCostItemByNDC;
   const getSections = isOnline ? cloudGetSections : offlineGetSections as typeof cloudGetSections;
   const updateTemplateStatus = isOnline ? cloudUpdateTemplateStatus : offlineUpdateTemplateStatus as typeof cloudUpdateTemplateStatus;
