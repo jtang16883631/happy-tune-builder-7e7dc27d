@@ -1597,8 +1597,9 @@ const Scan = () => {
         const dataRowCount = rows.length - 1; // Exclude header
         applyExcelFormulas(worksheet, dataRowCount, 1);
 
-        // Set column widths
-        worksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
+        // Set column widths and hide columns B, M, N, O, R, S, U, V, W
+        const hiddenCols = new Set([1, 12, 13, 14, 17, 18, 20, 21, 22]); // 0-indexed
+        worksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15, hidden: hiddenCols.has(i) }));
 
         // Sanitize sheet name (Excel has 31 char limit, no special chars)
         let sheetName = section.full_section || section.sect || 'Sheet';
@@ -1963,7 +1964,9 @@ const Scan = () => {
         // Apply formulas for Unit Cost, Extended, and SUM
         const dataRowCount = rows.length - 1;
         applyExcelFormulas(worksheet, dataRowCount, 1);
-        worksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15 }));
+        // Hide columns B, M, N, O, R, S, U, V, W on section sheets
+        const hiddenColsMerge = new Set([1, 12, 13, 14, 17, 18, 20, 21, 22]);
+        worksheet['!cols'] = headers.map((_, i) => ({ wch: i === 10 || i === 11 ? 30 : 15, hidden: hiddenColsMerge.has(i) }));
 
         let sheetName = section.full_section || section.sect || 'Sheet';
         sheetName = sheetName.replace(/[\\/*?[\]:]/g, '-').substring(0, 31);
