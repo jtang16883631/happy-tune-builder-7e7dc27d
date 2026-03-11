@@ -1,0 +1,1 @@
+ALTER TABLE public.data_templates ADD COLUMN address text;

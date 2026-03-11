@@ -1625,6 +1625,7 @@ const Scan = () => {
         templateName: selectedTemplate.name,
         dateStr,
         sectionSheetNames,
+        address: selectedTemplate.address || '',
       });
 
       // For "Export My Scans" - only include Summary and section sheets (no Master, no Validation)
@@ -1990,6 +1991,7 @@ const Scan = () => {
         templateName: selectedTemplate.name,
         dateStr,
         sectionSheetNames,
+        address: selectedTemplate.address || '',
       });
 
       // Create Master sheet - combine all sections

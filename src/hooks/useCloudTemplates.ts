@@ -10,6 +10,7 @@ export interface CloudTemplate {
   name: string;
   inv_date: string | null;
   facility_name: string | null;
+  address: string | null;
   inv_number: string | null;
   cost_file_name: string | null;
   job_ticket_file_name: string | null;
@@ -87,12 +88,19 @@ export function useCloudTemplates() {
     invDate: string | null;
     invNumber: string | null;
     facilityName: string | null;
+    address: string | null;
     sections: { sect: string; description: string; costSheet: string | null }[];
   } => {
     let invDate: string | null = null;
     let invNumber: string | null = null;
     let facilityName: string | null = null;
+    let address: string | null = null;
     const sections: { sect: string; description: string; costSheet: string | null }[] = [];
+
+    // Extract address from cell C5 (row index 4, col index 2)
+    if (rawData.length > 4 && rawData[4] && rawData[4].length > 2 && rawData[4][2]) {
+      address = String(rawData[4][2]).trim() || null;
+    }
 
     // Try to extract invoice number from filename first (e.g., "25090182.xlsx" or "25090182 - Client Name.xlsx")
     if (fileName) {
@@ -210,7 +218,7 @@ export function useCloudTemplates() {
       sections.push({ sect: '0000', description: 'Default', costSheet: null });
     }
 
-    return { invDate, invNumber, facilityName, sections };
+    return { invDate, invNumber, facilityName, address, sections };
   };
 
   // Import a template - supports multi-sheet cost data
@@ -233,7 +241,7 @@ export function useCloudTemplates() {
       if (!user) return { success: false, error: 'Not authenticated' };
 
       try {
-        const { invDate, invNumber, facilityName, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
+        const { invDate, invNumber, facilityName, address, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
 
         // Insert template
         const { data: templateData, error: templateError } = await supabase
@@ -243,6 +251,7 @@ export function useCloudTemplates() {
             name: templateName,
             inv_date: invDate,
             facility_name: facilityName,
+            address,
             inv_number: invNumber,
             cost_file_name: costFileName,
             job_ticket_file_name: jobTicketFileName,
@@ -399,7 +408,7 @@ export function useCloudTemplates() {
       if (!user) return { success: false, error: 'Not authenticated' };
 
       try {
-        const { invDate, invNumber, facilityName, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
+        const { invDate, invNumber, facilityName, address, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
 
         // Insert template
         const { data: templateData, error: templateError } = await supabase
@@ -409,6 +418,7 @@ export function useCloudTemplates() {
             name: templateName,
             inv_date: invDate,
             facility_name: facilityName,
+            address,
             inv_number: invNumber,
             cost_file_name: null,
             job_ticket_file_name: jobTicketFileName,

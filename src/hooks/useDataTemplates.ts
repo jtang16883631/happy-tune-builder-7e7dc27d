@@ -246,12 +246,19 @@ export function useDataTemplates() {
     invDate: string | null; 
     invNumber: string | null; 
     facilityName: string | null; 
+    address: string | null;
     sections: { sect: string; description: string; costSheet: string | null }[] 
   } => {
     let invDate: string | null = null;
     let invNumber: string | null = null;
     let facilityName: string | null = null;
+    let address: string | null = null;
     const sections: { sect: string; description: string; costSheet: string | null }[] = [];
+
+    // Extract address from cell C5 (row index 4, col index 2)
+    if (rawData.length > 4 && rawData[4] && rawData[4].length > 2 && rawData[4][2]) {
+      address = String(rawData[4][2]).trim() || null;
+    }
 
     // Scan raw data for metadata (like Python's applymap approach)
     for (let r = 0; r < rawData.length; r++) {
@@ -366,7 +373,7 @@ export function useDataTemplates() {
       sections.push({ sect: '0000', description: 'Default', costSheet: null });
     }
 
-    return { invDate, invNumber, facilityName, sections };
+    return { invDate, invNumber, facilityName, address, sections };
   };
 
   // Import a template pair (cost data + job ticket)
