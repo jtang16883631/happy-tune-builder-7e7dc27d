@@ -1625,7 +1625,7 @@ const Scan = () => {
         templateName: selectedTemplate.name,
         dateStr,
         sectionSheetNames,
-        address: (selectedTemplate as any).address || '',
+        address: selectedTemplate.address || '',
       });
 
       // For "Export My Scans" - only include Summary and section sheets (no Master, no Validation)
