@@ -223,7 +223,7 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
 
   // Update worksheet range
   const lastRow = sigRow + 2;
-  ws['!ref'] = `A1:E${lastRow}`;
+  ws['!ref'] = `A1:C${lastRow}`;
 
   return ws;
 }
