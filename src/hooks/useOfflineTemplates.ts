@@ -218,7 +218,20 @@ async function _saveDatabase(database?: Database) {
   const targetDb = database || _db;
   if (!targetDb) return;
   const dbData = targetDb.export();
-  await saveToIndexedDB(DB_KEY, new Uint8Array(dbData));
+  const bytes = new Uint8Array(dbData);
+  console.log(`[OfflineDB] Saving ${(bytes.byteLength / 1024).toFixed(0)} KB to IndexedDB…`);
+  await saveToIndexedDB(DB_KEY, bytes);
+  // Verify write succeeded by reading back size
+  try {
+    const readBack = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+    if (!readBack || readBack.byteLength !== bytes.byteLength) {
+      console.error(`[OfflineDB] SAVE VERIFICATION FAILED! Wrote ${bytes.byteLength} but read back ${readBack?.byteLength ?? 0}`);
+    } else {
+      console.log(`[OfflineDB] Save verified: ${(readBack.byteLength / 1024).toFixed(0)} KB confirmed in IndexedDB`);
+    }
+  } catch (verifyErr) {
+    console.error('[OfflineDB] Save verification error:', verifyErr);
+  }
 }
 
 async function _ensureDb(): Promise<Database | null> {
