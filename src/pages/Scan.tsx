@@ -1991,6 +1991,7 @@ const Scan = () => {
         templateName: selectedTemplate.name,
         dateStr,
         sectionSheetNames,
+        address: (selectedTemplate as any).address || '',
       });
 
       // Create Master sheet - combine all sections
