@@ -249,6 +249,13 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
   const lastRow = sigRow + 2;
   ws['!ref'] = `A1:C${lastRow}`;
 
+  // Hide certification + signature rows
+  if (!ws['!rows']) ws['!rows'] = [];
+  for (let r = certStartRow - 1; r <= lastRow - 1; r++) {
+    // r is 0-based row index
+    ws['!rows'][r] = { hidden: true };
+  }
+
   // Hide gridlines
   ws['!sheetViews'] = [{ showGridLines: false }];
 
