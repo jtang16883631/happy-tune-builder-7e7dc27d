@@ -58,8 +58,8 @@ export async function injectImageIntoXlsx(
       </xdr:blipFill>
       <xdr:spPr>
         <a:xfrm>
-          <a:off x="100000" y="50000"/>
-          <a:ext cx="3500000" cy="700000"/>
+          <a:off x="200000" y="200000"/>
+          <a:ext cx="5200000" cy="1100000"/>
         </a:xfrm>
         <a:prstGeom prst="rect">
           <a:avLst/>
