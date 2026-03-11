@@ -240,7 +240,7 @@ export function useCloudTemplates() {
       if (!user) return { success: false, error: 'Not authenticated' };
 
       try {
-        const { invDate, invNumber, facilityName, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
+        const { invDate, invNumber, facilityName, address, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
 
         // Insert template
         const { data: templateData, error: templateError } = await supabase
@@ -250,6 +250,7 @@ export function useCloudTemplates() {
             name: templateName,
             inv_date: invDate,
             facility_name: facilityName,
+            address,
             inv_number: invNumber,
             cost_file_name: costFileName,
             job_ticket_file_name: jobTicketFileName,
