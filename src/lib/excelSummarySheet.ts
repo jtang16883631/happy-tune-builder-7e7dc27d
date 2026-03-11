@@ -189,11 +189,10 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
     },
   };
 
-  // Only C and D cells of total row get the background
-  ws[`C${totalRow}`] = { t: 's', v: '$', s: { font: { ...FONT_ARIAL_10 }, fill: { fgColor: { rgb: TOTAL_BG } }, border: { top: { style: 'medium', color: { rgb: BLACK } }, bottom: { style: 'medium', color: { rgb: BLACK } }, left: { style: 'medium', color: { rgb: BLACK } } } } };
-  ws[`D${totalRow}`] = {
+  // Only C cell of total row gets the background (not A or B)
+  ws[`C${totalRow}`] = {
     t: 'n',
-    f: `SUM(D${firstSectionRow}:D${lastSectionRow})`,
+    f: `SUM(C${firstSectionRow}:C${lastSectionRow})`,
     z: ACCOUNTING_FMT,
     s: totalStyle,
   };
