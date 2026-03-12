@@ -1133,6 +1133,10 @@ const Scan = () => {
   // Step B: If IO == "I", compute outerKey = left9 + "O" and search FDA column AD (ndc9_outer)
   // Step C: Based on AD search count - 0: no popup, keep scanned; 1: auto-use the matched AE (outerpack_ndc); >1: popup to select AE
   const initiateNDCLookup = useCallback(async (scannedNdc: string, rowIndex: number): Promise<boolean> => {
+    // Prompt for name if missing (cold start without prior online session)
+    if (!userShortName && !localStorage.getItem('cached_user_short_name')) {
+      setShowNamePrompt(true);
+    }
     const cleanNdc = (scannedNdc ?? '').replace(/\D/g, '');
 
     // Helper to set TIME, REC, and scannedNdc
