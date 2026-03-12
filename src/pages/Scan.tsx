@@ -3888,6 +3888,50 @@ const Scan = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Name Prompt Dialog - shown on cold start when cached name is missing */}
+      <Dialog open={showNamePrompt} onOpenChange={setShowNamePrompt}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Enter Your Name</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Your name is used for REC identification (e.g., "JiaweiT-001"). 
+            This will be saved for future offline sessions.
+          </p>
+          <Input
+            placeholder="e.g., JiaweiT"
+            value={namePromptValue}
+            onChange={(e) => setNamePromptValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && namePromptValue.trim()) {
+                const name = namePromptValue.trim();
+                setUserShortName(name);
+                localStorage.setItem('cached_user_short_name', name);
+                setShowNamePrompt(false);
+                setNamePromptValue('');
+                toast.success(`Name set to "${name}"`);
+              }
+            }}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNamePrompt(false)}>
+              Skip
+            </Button>
+            <Button onClick={() => {
+              const name = namePromptValue.trim();
+              if (!name) return;
+              setUserShortName(name);
+              localStorage.setItem('cached_user_short_name', name);
+              setShowNamePrompt(false);
+              setNamePromptValue('');
+              toast.success(`Name set to "${name}"`);
+            }}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </AppLayout>
   );
