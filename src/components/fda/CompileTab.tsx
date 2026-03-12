@@ -133,7 +133,7 @@ export function CompileTab() {
   };
 
   // Compile and export merged Excel
-  const handleCompile = () => {
+  const handleCompile = async () => {
     if (uploadedFiles.length === 0) {
       toast({ title: 'No files to compile', variant: 'destructive' });
       return;
