@@ -873,7 +873,8 @@ const Scan = () => {
   // Generate REC value based on row index (1-based)
   const generateRecForRow = useCallback((rowIndex: number) => {
     const rowNum = rowIndex + 1; // 1-based row number
-    return `${userShortName}${String(rowNum).padStart(3, '0')}`;
+    const name = userShortName || localStorage.getItem('cached_user_short_name') || '';
+    return `${name}${String(rowNum).padStart(3, '0')}`;
   }, [userShortName]);
 
   // Lookup NDC and update row with mapping (by column position, not name):
