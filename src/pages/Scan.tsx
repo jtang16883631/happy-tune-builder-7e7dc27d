@@ -129,14 +129,19 @@ const Scan = () => {
     const CACHE_KEY = 'cached_user_short_name';
     
     const fetchUserProfile = async () => {
-      // Always try to load cached value first, regardless of online status
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached && !userShortName) {
-        setUserShortName(cached);
+      // If we already have a name from synchronous init, skip cache read
+      if (!userShortName) {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          setUserShortName(cached);
+        }
       }
 
-      // If we're offline or have no user, the cached value above is sufficient
-      if (!navigator.onLine || !user?.id) return;
+      // If we're offline or have no user, the cached/init value is sufficient
+      if (!navigator.onLine || !user?.id) {
+        console.log(`[Scan] REC cold-start: userShortName="${userShortName}", offline=${!navigator.onLine}`);
+        return;
+      }
       
       try {
         const { data: profile, error } = await supabase
@@ -165,7 +170,6 @@ const Scan = () => {
         }
       } catch (err) {
         console.error('Error fetching profile:', err);
-        // cached value already set above
       }
     };
     
