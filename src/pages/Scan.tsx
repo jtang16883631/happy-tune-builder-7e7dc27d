@@ -2767,9 +2767,22 @@ const Scan = () => {
       }
     };
 
+    const cachedUserId = user?.id || localStorage.getItem('cached_user_id');
+    const cachedUserRole: string | null = (() => {
+      try {
+        const raw = cachedUserId ? localStorage.getItem(`cached_roles:${cachedUserId}`) : null;
+        const r: string[] = raw ? JSON.parse(raw) : [];
+        return r[0] ?? null;
+      } catch { return null; }
+    })();
+
     return (
       <AppLayout>
         <div className="space-y-8" style={{ fontFamily: 'Arial, sans-serif' }}>
+          {/* Quick Clock Panel - always available */}
+          {cachedUserId && (
+            <QuickClockPanel userId={cachedUserId} userRole={cachedUserRole} />
+          )}
           <div className="text-center py-4 relative">
             {/* Sync buttons in top right */}
             <div className="absolute right-0 top-0 flex items-center gap-2">
