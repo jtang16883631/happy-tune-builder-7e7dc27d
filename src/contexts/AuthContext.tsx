@@ -270,6 +270,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   setRolesLoaded(true);
                   writeCachedRoles(existingSession.user.id, userRoles);
                 }
+                // Cache short name for offline REC generation
+                cacheUserShortName(existingSession.user.id);
               })(),
               profileRoleTimeout,
             ]);
