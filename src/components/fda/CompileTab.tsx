@@ -276,6 +276,9 @@ export function CompileTab() {
         z: '"$"#,##0.00',
         s: { numFmt: '"$"#,##0.00' }
       };
+
+      // Hide gridlines on Summary sheet
+      summaryWs['!sheetViews'] = [{ showGridLines: false }];
       
       // Create Master sheet (all data combined)
       const masterSheetData = [masterHeaders, ...masterData];
