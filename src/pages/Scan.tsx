@@ -101,13 +101,17 @@ const Scan = () => {
   // Single source of truth for connectivity (uses backend ping, not just navigator.onLine)
   const isOnline = useOnlineStatus();
   
-  // REC is now generated based on row index (1-based), no counter needed
+   // REC is now generated based on row index (1-based), no counter needed
   
   // User's short name for REC (e.g., "JiaweiT")
   // Synchronous init from localStorage so cold-start first render already has the name
   const [userShortName, setUserShortName] = useState(() => {
     return localStorage.getItem('cached_user_short_name') || '';
   });
+  
+  // Prompt user for name if cache is empty (cold start without prior online session)
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [namePromptValue, setNamePromptValue] = useState('');
   
   // Column visibility state - hide the new columns by default except REC
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set([
