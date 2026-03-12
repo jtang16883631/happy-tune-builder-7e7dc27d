@@ -39,6 +39,33 @@ export function applyExcelFormulas(
   dataRowCount: number, 
   headerRow: number = 1
 ): void {
+  const ACCOUNTING_FMT_LOCAL = '_("$"* #,##0.00_);_("$"* (#,##0.00);_("$"* "-"??_)';
+  const extendedCol = getColLetter(COLUMN_INDICES.EXTENDED);     // AA
+
+  // Always create SUM cell in AB1, even with 0 data rows
+  const sumCell = `${getColLetter(COLUMN_INDICES.SUM_COLUMN)}${headerRow}`;
+  if (dataRowCount > 0) {
+    const firstDataRow = headerRow + 1;
+    const lastDataRow = headerRow + dataRowCount;
+    const sumFormula = `SUM(${extendedCol}${firstDataRow}:${extendedCol}${lastDataRow})`;
+    const existingStyle = worksheet[sumCell]?.s || {};
+    worksheet[sumCell] = {
+      t: 'n',
+      f: sumFormula,
+      z: ACCOUNTING_FMT_LOCAL,
+      s: { ...existingStyle, numFmt: ACCOUNTING_FMT_LOCAL }
+    };
+  } else {
+    // No data rows — show $ - (value 0 with accounting format)
+    const existingStyle = worksheet[sumCell]?.s || {};
+    worksheet[sumCell] = {
+      t: 'n',
+      v: 0,
+      z: ACCOUNTING_FMT_LOCAL,
+      s: { ...existingStyle, numFmt: ACCOUNTING_FMT_LOCAL }
+    };
+  }
+
   if (dataRowCount <= 0) return;
 
   const packCostCol = getColLetter(COLUMN_INDICES.PACK_COST);   // Y
