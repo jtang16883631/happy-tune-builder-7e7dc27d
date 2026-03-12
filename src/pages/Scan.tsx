@@ -12,7 +12,7 @@ import { getCellValidationColor, getCellValidationClasses, applyValidationStyles
 import { applyExcelFormulas, applySummaryFormulas, COLUMN_INDICES, getColLetter } from '@/lib/excelFormulas';
 import { buildValidationData, createValidationWorksheet, addSummaryHyperlinks } from '@/lib/excelValidationTab';
 import { createStyledSummarySheet } from '@/lib/excelSummarySheet';
-import { injectImageIntoXlsx, fetchLogoImageData } from '@/lib/excelImageInject';
+import { injectImageIntoXlsx, fetchLogoImageData, hideGridlinesInXlsx } from '@/lib/excelImageInject';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCloudTemplates, CloudTemplate, CloudSection, TemplateStatus } from '@/hooks/useCloudTemplates';
@@ -1672,8 +1672,10 @@ const Scan = () => {
 
       // Inject logo into Summary sheet (index 0)
       const logoData = await fetchLogoImageData();
+      let xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      // Hide gridlines on all sheets
+      xlsxBuffer = await hideGridlinesInXlsx(xlsxBuffer);
       if (logoData) {
-        const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
         const blob = await injectImageIntoXlsx(xlsxBuffer, logoData, 0);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1682,7 +1684,13 @@ const Scan = () => {
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        XLSX.writeFile(workbook, filename);
+        const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
       }
       toast.success(`Exported ${sections.length} sections + Summary to Excel`);
     } catch (error) {
@@ -2067,8 +2075,10 @@ const Scan = () => {
 
       // Inject logo into Summary sheet (index 0)
       const logoData = await fetchLogoImageData();
+      let xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      // Hide gridlines on all sheets
+      xlsxBuffer = await hideGridlinesInXlsx(xlsxBuffer);
       if (logoData) {
-        const xlsxBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
         const blob = await injectImageIntoXlsx(xlsxBuffer, logoData, 0);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -2077,7 +2087,13 @@ const Scan = () => {
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        XLSX.writeFile(workbook, filename);
+        const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
       }
       toast.success(`Exported merged scans with Summary + Master to Excel`);
     } catch (error) {

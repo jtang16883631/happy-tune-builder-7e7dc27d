@@ -127,6 +127,47 @@ export async function injectImageIntoXlsx(
 }
 
 /**
+ * Hide gridlines on all sheets in an XLSX buffer by patching the XML.
+ * Works with xlsx-js-style v1.2.0 which doesn't support !sheetViews.
+ */
+export async function hideGridlinesInXlsx(xlsxBuffer: ArrayBuffer): Promise<ArrayBuffer> {
+  const zip = await JSZip.loadAsync(xlsxBuffer);
+
+  // Find all sheet XML files
+  const sheetFiles = Object.keys(zip.files).filter(
+    f => f.startsWith('xl/worksheets/sheet') && f.endsWith('.xml')
+  );
+
+  for (const sheetPath of sheetFiles) {
+    const file = zip.file(sheetPath);
+    if (!file) continue;
+    let xml = await file.async('string');
+
+    // If sheetViews already exists, update showGridLines attribute
+    if (xml.includes('<sheetViews>')) {
+      // Add or replace showGridLines in existing sheetView
+      if (xml.includes('showGridLines')) {
+        xml = xml.replace(/showGridLines="[^"]*"/, 'showGridLines="0"');
+      } else {
+        xml = xml.replace('<sheetView ', '<sheetView showGridLines="0" ');
+      }
+    } else {
+      // Insert sheetViews before sheetFormatPr or sheetData
+      const insertBefore = xml.includes('<sheetFormatPr') ? '<sheetFormatPr' : '<sheetData';
+      xml = xml.replace(
+        insertBefore,
+        `<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>${insertBefore}`
+      );
+    }
+
+    zip.file(sheetPath, xml);
+  }
+
+  const result = await zip.generateAsync({ type: 'arraybuffer' });
+  return result;
+}
+
+/**
  * Fetch the Meridian logo from the public assets and return as Uint8Array.
  */
 export async function fetchLogoImageData(): Promise<Uint8Array | null> {
