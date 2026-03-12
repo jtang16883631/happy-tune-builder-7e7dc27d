@@ -123,51 +123,58 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
   // -- Style: Row 15 Date (bold Arial 10) --
   setCellStyle(ws, 'B15', { font: FONT_ARIAL_10_BOLD });
 
-  // -- Style: Row 16 Table header --
-  // Determine border positions for outer-only borders on the section block
+  // -- Style: Row 16 Table header (outer border: top, left on B, right on C, bottom to separate from data) --
   const headerStyle = {
     font: { ...FONT_ARIAL_10_BOLD, color: { rgb: WHITE } },
     fill: { fgColor: { rgb: HEADER_BG } },
     alignment: { horizontal: 'center' as const },
   };
-  // Header B16: top+left+right border (outer top-left of block)
   ws['B16'] = { t: 's', v: 'Sections', s: {
     ...headerStyle,
     border: {
-      top: thinSide(BLACK), left: thinSide(BLACK), right: thinSide(BLACK),
+      top: thinSide(BLACK), left: thinSide(BLACK), bottom: thinSide(BLACK),
     },
   }};
-  // Header C16: top+right border (outer top-right of block)
   ws['C16'] = { t: 's', v: 'Value', s: {
     ...headerStyle,
     border: {
-      top: thinSide(BLACK), right: thinSide(BLACK),
+      top: thinSide(BLACK), right: thinSide(BLACK), bottom: thinSide(BLACK),
     },
   }};
 
-  // -- Section rows (NO internal borders at all, clean look) --
+  // -- Section rows: outer border only (left on B, right on C, bottom on last row) --
+  // NO internal vertical border between B and C
   const lastIdx = sectionSheetNames.length - 1;
   sectionSheetNames.forEach((sheetName, index) => {
     const rowNum = sectionStartRow + index;
     const escapedName = sheetName.replace(/'/g, "''");
     const isEvenRow = index % 2 === 1;
     const rowBg = isEvenRow ? ALT_ROW_BG : undefined;
+    const isLast = index === lastIdx;
 
     const baseFill = rowBg ? { fill: { fgColor: { rgb: rowBg } } } : {};
 
-    // Section name with hyperlink (column B) — NO borders
+    // Build outer-only borders
+    const borderB: any = { left: thinSide(BLACK) };
+    const borderC: any = { right: thinSide(BLACK) };
+    if (isLast) {
+      borderB.bottom = thinSide(BLACK);
+      borderC.bottom = thinSide(BLACK);
+    }
+
+    // Section name with hyperlink (column B)
     ws[`B${rowNum}`] = {
       t: 's',
       v: sheetName,
       l: { Target: `#'${escapedName}'!A1`, Tooltip: `Go to ${sheetName}` },
       s: {
         font: { ...FONT_ARIAL_10, color: { rgb: LINK_BLUE }, underline: true },
+        border: borderB,
         ...baseFill,
       },
     };
 
-    // Value formula with accounting format (column C) — NO borders
-    // Default v:0 ensures accounting format shows "$ -" when formula result is 0/empty
+    // Value formula (column C) — NO left border (removes vertical line between B and C)
     const valueFormula = `'${escapedName}'!${getColLetter(COLUMN_INDICES.SUM_COLUMN)}1`;
     ws[`C${rowNum}`] = {
       t: 'n',
@@ -177,11 +184,11 @@ export function createStyledSummarySheet(options: SummarySheetOptions): WorkShee
       s: {
         font: { ...FONT_ARIAL_10 },
         numFmt: ACCOUNTING_FMT,
+        border: borderC,
         ...baseFill,
       },
     };
   });
-
   // -- Total row --
   const firstSectionRow = sectionStartRow;
   const lastSectionRow = sectionStartRow + sectionSheetNames.length - 1;
