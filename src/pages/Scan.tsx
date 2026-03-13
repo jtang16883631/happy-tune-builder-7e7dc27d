@@ -3824,6 +3824,12 @@ const Scan = () => {
         open={costLookupDialogOpen}
         onOpenChange={setCostLookupDialogOpen}
         templateId={selectedTemplate?.id || null}
+        isOnline={isOnline}
+        offlineFns={{
+          searchCostItems: offlineSearchCostItems,
+          getCostSheetNames: offlineGetCostSheetNames,
+          getCostItemCount: offlineGetCostItemCount,
+        }}
       />
 
       {/* Section Password Dialog */}
