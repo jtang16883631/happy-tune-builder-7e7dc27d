@@ -850,7 +850,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       const exportDb = new _sqlRef.Database();
       exportDb.run(`
         CREATE TABLE templates (id TEXT PRIMARY KEY, cloud_id TEXT, user_id TEXT, name TEXT NOT NULL,
-          inv_date TEXT, facility_name TEXT, inv_number TEXT, cost_file_name TEXT,
+          inv_date TEXT, facility_name TEXT, address TEXT, inv_number TEXT, cost_file_name TEXT,
           job_ticket_file_name TEXT, status TEXT DEFAULT 'active',
           created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_dirty INTEGER DEFAULT 0);
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
@@ -868,8 +868,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
         if (local && db) {
           onStatus?.(`Exporting ${local.name} (from device)...`);
-          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [local.id, local.cloud_id, local.user_id, local.name, local.inv_date, local.facility_name,
+          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [local.id, local.cloud_id, local.user_id, local.name, local.inv_date, local.facility_name, local.address,
              local.inv_number, local.cost_file_name, local.job_ticket_file_name, local.status, local.created_at, local.updated_at, 0]);
 
           const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [local.id]);
@@ -885,8 +885,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           if (!tData) continue;
 
           const exportId = generateId();
-          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [exportId, tData.id, tData.user_id, tData.name, tData.inv_date, tData.facility_name,
+          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [exportId, tData.id, tData.user_id, tData.name, tData.inv_date, tData.facility_name, tData.address,
              tData.inv_number, tData.cost_file_name, tData.job_ticket_file_name, tData.status ?? 'active',
              tData.created_at, tData.updated_at, 0]);
 
