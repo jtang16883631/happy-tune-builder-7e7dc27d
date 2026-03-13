@@ -804,7 +804,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       const exportDb = new _sqlRef.Database();
       exportDb.run(`
         CREATE TABLE templates (id TEXT PRIMARY KEY, cloud_id TEXT, user_id TEXT, name TEXT NOT NULL,
-          inv_date TEXT, facility_name TEXT, inv_number TEXT, cost_file_name TEXT,
+          inv_date TEXT, facility_name TEXT, address TEXT, inv_number TEXT, cost_file_name TEXT,
           job_ticket_file_name TEXT, status TEXT DEFAULT 'active',
           created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_dirty INTEGER DEFAULT 0);
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
@@ -815,8 +815,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
       let sectionCount = 0, costItemCount = 0;
       for (const t of templatesToExport) {
-        exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [t.id, t.cloud_id, t.user_id, t.name, t.inv_date, t.facility_name, t.inv_number,
+        exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [t.id, t.cloud_id, t.user_id, t.name, t.inv_date, t.facility_name, t.address, t.inv_number,
            t.cost_file_name, t.job_ticket_file_name, t.status, t.created_at, t.updated_at, 0]);
 
         const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [t.id]);
