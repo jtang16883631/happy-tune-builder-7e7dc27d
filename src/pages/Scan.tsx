@@ -210,6 +210,9 @@ const Scan = () => {
     deleteSection: offlineDeleteSection,
     deleteLocalTemplate,
     getTemplateCostItemCount,
+    searchCostItems: offlineSearchCostItems,
+    getCostSheetNames: offlineGetCostSheetNames,
+    getCostItemCount: offlineGetCostItemCount,
   } = useOfflineTemplates(isOnline);
   
   const { lookupNDC: fdaLookup, checkIsInnerPack, findOuterCandidates, getDrugByOuterNDC } = useLocalFDA();
