@@ -24,7 +24,7 @@ const _electronSave = async (data: Uint8Array): Promise<boolean> => {
       binary += String.fromCharCode(...data.subarray(i, i + chunk));
     }
     const base64 = btoa(binary);
-    const result = await window.electronAPI!.offlineSaveDb(ELECTRON_DB_FILE, base64);
+    const result = await (window as any).electronAPI.offlineSaveDb(ELECTRON_DB_FILE, base64);
     if (result.success) {
       console.log(`[OfflineFS] Saved to local file: ${(result.size! / 1024).toFixed(0)} KB`);
       return true;
