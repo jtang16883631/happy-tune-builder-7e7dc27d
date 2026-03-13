@@ -19,6 +19,7 @@ export interface OfflineTemplate {
   name: string;
   inv_date: string | null;
   facility_name: string | null;
+  address: string | null;
   inv_number: string | null;
   cost_file_name: string | null;
   job_ticket_file_name: string | null;
@@ -129,7 +130,7 @@ function _getSnapshot() { return _version; }
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS templates (
     id TEXT PRIMARY KEY, cloud_id TEXT, user_id TEXT, name TEXT NOT NULL,
-    inv_date TEXT, facility_name TEXT, inv_number TEXT, cost_file_name TEXT,
+    inv_date TEXT, facility_name TEXT, address TEXT, inv_number TEXT, cost_file_name TEXT,
     job_ticket_file_name TEXT, status TEXT DEFAULT 'active',
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_dirty INTEGER DEFAULT 0
   );
@@ -188,6 +189,19 @@ async function _doInit(): Promise<Database | null> {
           } catch {
             await saveToIndexedDB('migration_v1_done', true);
           }
+        }
+        // Run v2 migration: add address column
+        const migrationV2Done = await loadFromIndexedDB<boolean>('migration_v2_done');
+        if (!migrationV2Done) {
+          try {
+            _db.run(`ALTER TABLE templates ADD COLUMN address TEXT`);
+            const dbData = _db.export();
+            await saveToIndexedDB(DB_KEY, new Uint8Array(dbData));
+            console.log('[OfflineDB] Migration v2 complete (added address column)');
+          } catch {
+            // Column may already exist
+          }
+          await saveToIndexedDB('migration_v2_done', true);
         }
         _db.run(SCHEMA_SQL);
 
@@ -336,7 +350,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     if (!db) return [];
     try {
       const results = db.exec(`
-        SELECT id, cloud_id, user_id, name, inv_date, facility_name, inv_number,
+        SELECT id, cloud_id, user_id, name, inv_date, facility_name, address, inv_number,
                cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty
         FROM templates ORDER BY inv_date DESC, name
       `);
@@ -344,10 +358,11 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       return results[0].values.map((row: any[]) => ({
         id: row[0] as string, cloud_id: row[1] as string | null, user_id: row[2] as string,
         name: row[3] as string, inv_date: row[4] as string | null,
-        facility_name: row[5] as string | null, inv_number: row[6] as string | null,
-        cost_file_name: row[7] as string | null, job_ticket_file_name: row[8] as string | null,
-        status: row[9] as TemplateStatus | null, created_at: row[10] as string,
-        updated_at: row[11] as string, is_dirty: Boolean(row[12]),
+        facility_name: row[5] as string | null, address: row[6] as string | null,
+        inv_number: row[7] as string | null,
+        cost_file_name: row[8] as string | null, job_ticket_file_name: row[9] as string | null,
+        status: row[10] as TemplateStatus | null, created_at: row[11] as string,
+        updated_at: row[12] as string, is_dirty: Boolean(row[13]),
       }));
     } catch (err) { console.error('[OfflineDB] getTemplates error:', err); return []; }
   }, [db]);
@@ -470,7 +485,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
         const [templateResult, countResult] = await Promise.all([
           supabase.from('data_templates')
-            .select('id, user_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
+            .select('id, user_id, name, inv_date, facility_name, address, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
             .eq('id', cloudId).single(),
           supabase.from('template_cost_items')
             .select('id', { count: 'exact', head: true })
@@ -486,10 +501,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         activeDb.run('BEGIN TRANSACTION');
         try {
           activeDb.run(`
-            INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number,
+            INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, address, inv_number,
                                    cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-          `, [localId, ct.id, ct.user_id, ct.name, ct.inv_date, ct.facility_name, ct.inv_number,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+          `, [localId, ct.id, ct.user_id, ct.name, ct.inv_date, ct.facility_name, ct.address, ct.inv_number,
               ct.cost_file_name, ct.job_ticket_file_name, ct.status || 'active', ct.created_at, ct.updated_at]);
 
           setSyncProgress(prev => ({ ...prev, status: 'fetching_sections' }));
@@ -597,7 +612,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     try {
       const { data: cloudTemplates, error: fetchError } = await supabase
         .from('data_templates')
-        .select('id, user_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
+        .select('id, user_id, name, inv_date, facility_name, address, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
         .order('inv_date', { ascending: false });
       if (fetchError) throw fetchError;
 
@@ -608,10 +623,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const localId = ct.id;
           db.run('BEGIN TRANSACTION');
           try {
-            db.run(`INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number,
+            db.run(`INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, address, inv_number,
                      cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-              [localId, ct.id, ct.user_id, ct.name, ct.inv_date, ct.facility_name, ct.inv_number,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+              [localId, ct.id, ct.user_id, ct.name, ct.inv_date, ct.facility_name, ct.address, ct.inv_number,
                ct.cost_file_name, ct.job_ticket_file_name, ct.status || 'active', ct.created_at, ct.updated_at]);
 
             const [sectionsResult, countResult] = await Promise.all([
@@ -649,9 +664,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const localId = existing[0].values[0][0] as string;
           const isDirty = db.exec(`SELECT is_dirty FROM templates WHERE id = ?`, [localId]);
           if (isDirty.length > 0 && !isDirty[0].values[0][0]) {
-            db.run(`UPDATE templates SET name = ?, inv_date = ?, facility_name = ?, inv_number = ?,
+            db.run(`UPDATE templates SET name = ?, inv_date = ?, facility_name = ?, address = ?, inv_number = ?,
                      cost_file_name = ?, job_ticket_file_name = ?, status = ?, updated_at = ? WHERE id = ?`,
-              [ct.name, ct.inv_date, ct.facility_name, ct.inv_number, ct.cost_file_name, ct.job_ticket_file_name, ct.status, ct.updated_at, localId]);
+              [ct.name, ct.inv_date, ct.facility_name, ct.address, ct.inv_number, ct.cost_file_name, ct.job_ticket_file_name, ct.status, ct.updated_at, localId]);
           }
         }
       }
@@ -789,7 +804,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       const exportDb = new _sqlRef.Database();
       exportDb.run(`
         CREATE TABLE templates (id TEXT PRIMARY KEY, cloud_id TEXT, user_id TEXT, name TEXT NOT NULL,
-          inv_date TEXT, facility_name TEXT, inv_number TEXT, cost_file_name TEXT,
+          inv_date TEXT, facility_name TEXT, address TEXT, inv_number TEXT, cost_file_name TEXT,
           job_ticket_file_name TEXT, status TEXT DEFAULT 'active',
           created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_dirty INTEGER DEFAULT 0);
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
@@ -800,8 +815,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
       let sectionCount = 0, costItemCount = 0;
       for (const t of templatesToExport) {
-        exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [t.id, t.cloud_id, t.user_id, t.name, t.inv_date, t.facility_name, t.inv_number,
+        exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [t.id, t.cloud_id, t.user_id, t.name, t.inv_date, t.facility_name, t.address, t.inv_number,
            t.cost_file_name, t.job_ticket_file_name, t.status, t.created_at, t.updated_at, 0]);
 
         const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [t.id]);
@@ -835,7 +850,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       const exportDb = new _sqlRef.Database();
       exportDb.run(`
         CREATE TABLE templates (id TEXT PRIMARY KEY, cloud_id TEXT, user_id TEXT, name TEXT NOT NULL,
-          inv_date TEXT, facility_name TEXT, inv_number TEXT, cost_file_name TEXT,
+          inv_date TEXT, facility_name TEXT, address TEXT, inv_number TEXT, cost_file_name TEXT,
           job_ticket_file_name TEXT, status TEXT DEFAULT 'active',
           created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_dirty INTEGER DEFAULT 0);
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
@@ -853,8 +868,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
         if (local && db) {
           onStatus?.(`Exporting ${local.name} (from device)...`);
-          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [local.id, local.cloud_id, local.user_id, local.name, local.inv_date, local.facility_name,
+          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [local.id, local.cloud_id, local.user_id, local.name, local.inv_date, local.facility_name, local.address,
              local.inv_number, local.cost_file_name, local.job_ticket_file_name, local.status, local.created_at, local.updated_at, 0]);
 
           const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [local.id]);
@@ -870,8 +885,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           if (!tData) continue;
 
           const exportId = generateId();
-          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [exportId, tData.id, tData.user_id, tData.name, tData.inv_date, tData.facility_name,
+          exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [exportId, tData.id, tData.user_id, tData.name, tData.inv_date, tData.facility_name, tData.address,
              tData.inv_number, tData.cost_file_name, tData.job_ticket_file_name, tData.status ?? 'active',
              tData.created_at, tData.updated_at, 0]);
 
@@ -965,21 +980,30 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         const sourceId = selectedIds[i];
         onProgress?.(Math.round(((i + 0.5) / total) * 100));
 
-        const templateResult = sourceDb.exec(`SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name FROM templates WHERE id = ?`, [sourceId]);
+        // Try with address column first, fall back without it for old DBs
+        let templateResult;
+        let hasAddressCol = true;
+        try {
+          templateResult = sourceDb.exec(`SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name, address FROM templates WHERE id = ?`, [sourceId]);
+        } catch {
+          hasAddressCol = false;
+          templateResult = sourceDb.exec(`SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name FROM templates WHERE id = ?`, [sourceId]);
+        }
         if (templateResult.length === 0 || templateResult[0].values.length === 0) continue;
 
         const tRow = templateResult[0].values[0];
         const templateName = tRow[1] as string;
         const cloudId = tRow[0] as string | null;
+        const addressVal = hasAddressCol ? (tRow[7] as string | null) : null;
 
         const existing = db.exec(`SELECT id FROM templates WHERE name = ?`, [templateName]);
         if (existing.length > 0 && existing[0].values.length > 0) continue;
 
         const newLocalId = generateId();
-        db.run(`INSERT INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number,
+        db.run(`INSERT INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, address, inv_number,
                  cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, 0)`,
-          [newLocalId, cloudId, userId, templateName, tRow[2], tRow[3], tRow[4], tRow[5], tRow[6],
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, 0)`,
+          [newLocalId, cloudId, userId, templateName, tRow[2], tRow[3], addressVal, tRow[4], tRow[5], tRow[6],
            new Date().toISOString(), new Date().toISOString()]);
 
         const sectionsResult = sourceDb.exec(`SELECT sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [sourceId]);
