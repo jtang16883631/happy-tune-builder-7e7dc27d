@@ -612,7 +612,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     try {
       const { data: cloudTemplates, error: fetchError } = await supabase
         .from('data_templates')
-        .select('id, user_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
+        .select('id, user_id, name, inv_date, facility_name, address, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
         .order('inv_date', { ascending: false });
       if (fetchError) throw fetchError;
 
@@ -623,10 +623,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const localId = ct.id;
           db.run('BEGIN TRANSACTION');
           try {
-            db.run(`INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, inv_number,
+            db.run(`INSERT OR REPLACE INTO templates (id, cloud_id, user_id, name, inv_date, facility_name, address, inv_number,
                      cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-              [localId, ct.id, ct.user_id, ct.name, ct.inv_date, ct.facility_name, ct.inv_number,
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+              [localId, ct.id, ct.user_id, ct.name, ct.inv_date, ct.facility_name, ct.address, ct.inv_number,
                ct.cost_file_name, ct.job_ticket_file_name, ct.status || 'active', ct.created_at, ct.updated_at]);
 
             const [sectionsResult, countResult] = await Promise.all([
@@ -664,9 +664,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const localId = existing[0].values[0][0] as string;
           const isDirty = db.exec(`SELECT is_dirty FROM templates WHERE id = ?`, [localId]);
           if (isDirty.length > 0 && !isDirty[0].values[0][0]) {
-            db.run(`UPDATE templates SET name = ?, inv_date = ?, facility_name = ?, inv_number = ?,
+            db.run(`UPDATE templates SET name = ?, inv_date = ?, facility_name = ?, address = ?, inv_number = ?,
                      cost_file_name = ?, job_ticket_file_name = ?, status = ?, updated_at = ? WHERE id = ?`,
-              [ct.name, ct.inv_date, ct.facility_name, ct.inv_number, ct.cost_file_name, ct.job_ticket_file_name, ct.status, ct.updated_at, localId]);
+              [ct.name, ct.inv_date, ct.facility_name, ct.address, ct.inv_number, ct.cost_file_name, ct.job_ticket_file_name, ct.status, ct.updated_at, localId]);
           }
         }
       }
