@@ -19,6 +19,7 @@ export interface OfflineTemplate {
   name: string;
   inv_date: string | null;
   facility_name: string | null;
+  address: string | null;
   inv_number: string | null;
   cost_file_name: string | null;
   job_ticket_file_name: string | null;
