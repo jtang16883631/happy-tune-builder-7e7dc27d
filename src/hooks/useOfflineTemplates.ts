@@ -40,7 +40,7 @@ const _electronSave = async (data: Uint8Array): Promise<boolean> => {
 const _electronLoad = async (): Promise<Uint8Array | null> => {
   if (!_isElectron()) return null;
   try {
-    const result = await window.electronAPI!.offlineLoadDb(ELECTRON_DB_FILE);
+    const result = await (window as any).electronAPI.offlineLoadDb(ELECTRON_DB_FILE);
     if (!result.success || !result.data) return null;
     // Convert base64 back to Uint8Array
     const binary = atob(result.data);
