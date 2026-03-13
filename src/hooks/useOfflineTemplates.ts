@@ -980,13 +980,21 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         const sourceId = selectedIds[i];
         onProgress?.(Math.round(((i + 0.5) / total) * 100));
 
-        const templateResult = sourceDb.exec(`SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name, address FROM templates WHERE id = ?`, [sourceId]);
+        // Try with address column first, fall back without it for old DBs
+        let templateResult;
+        let hasAddressCol = true;
+        try {
+          templateResult = sourceDb.exec(`SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name, address FROM templates WHERE id = ?`, [sourceId]);
+        } catch {
+          hasAddressCol = false;
+          templateResult = sourceDb.exec(`SELECT cloud_id, name, inv_date, facility_name, inv_number, cost_file_name, job_ticket_file_name FROM templates WHERE id = ?`, [sourceId]);
+        }
         if (templateResult.length === 0 || templateResult[0].values.length === 0) continue;
 
         const tRow = templateResult[0].values[0];
         const templateName = tRow[1] as string;
         const cloudId = tRow[0] as string | null;
-        const addressVal = tRow[7] as string | null; // address may not exist in old DBs
+        const addressVal = hasAddressCol ? (tRow[7] as string | null) : null;
 
         const existing = db.exec(`SELECT id FROM templates WHERE name = ?`, [templateName]);
         if (existing.length > 0 && existing[0].values.length > 0) continue;
