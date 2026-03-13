@@ -350,7 +350,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     if (!db) return [];
     try {
       const results = db.exec(`
-        SELECT id, cloud_id, user_id, name, inv_date, facility_name, inv_number,
+        SELECT id, cloud_id, user_id, name, inv_date, facility_name, address, inv_number,
                cost_file_name, job_ticket_file_name, status, created_at, updated_at, is_dirty
         FROM templates ORDER BY inv_date DESC, name
       `);
@@ -358,10 +358,11 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       return results[0].values.map((row: any[]) => ({
         id: row[0] as string, cloud_id: row[1] as string | null, user_id: row[2] as string,
         name: row[3] as string, inv_date: row[4] as string | null,
-        facility_name: row[5] as string | null, inv_number: row[6] as string | null,
-        cost_file_name: row[7] as string | null, job_ticket_file_name: row[8] as string | null,
-        status: row[9] as TemplateStatus | null, created_at: row[10] as string,
-        updated_at: row[11] as string, is_dirty: Boolean(row[12]),
+        facility_name: row[5] as string | null, address: row[6] as string | null,
+        inv_number: row[7] as string | null,
+        cost_file_name: row[8] as string | null, job_ticket_file_name: row[9] as string | null,
+        status: row[10] as TemplateStatus | null, created_at: row[11] as string,
+        updated_at: row[12] as string, is_dirty: Boolean(row[13]),
       }));
     } catch (err) { console.error('[OfflineDB] getTemplates error:', err); return []; }
   }, [db]);
