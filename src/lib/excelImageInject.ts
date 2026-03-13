@@ -169,14 +169,63 @@ export async function hideGridlinesInXlsx(xlsxBuffer: ArrayBuffer): Promise<Arra
 
 /**
  * Fetch the Meridian logo from the public assets and return as Uint8Array.
+ * Caches the logo in IndexedDB so it's available during cold-start offline mode.
  */
+const LOGO_CACHE_DB = 'logo_cache_db';
+const LOGO_CACHE_STORE = 'logo_store';
+const LOGO_CACHE_KEY = 'meridian_logo';
+
+async function openLogoCacheDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(LOGO_CACHE_DB, 1);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(LOGO_CACHE_STORE)) {
+        db.createObjectStore(LOGO_CACHE_STORE);
+      }
+    };
+  });
+}
+
+async function getCachedLogo(): Promise<Uint8Array | null> {
+  try {
+    const db = await openLogoCacheDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(LOGO_CACHE_STORE, 'readonly');
+      const req = tx.objectStore(LOGO_CACHE_STORE).get(LOGO_CACHE_KEY);
+      req.onsuccess = () => { db.close(); resolve(req.result ?? null); };
+      req.onerror = () => { db.close(); resolve(null); };
+    });
+  } catch { return null; }
+}
+
+async function cacheLogo(data: Uint8Array): Promise<void> {
+  try {
+    const db = await openLogoCacheDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(LOGO_CACHE_STORE, 'readwrite');
+      tx.objectStore(LOGO_CACHE_STORE).put(data, LOGO_CACHE_KEY);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); resolve(); };
+    });
+  } catch {}
+}
+
 export async function fetchLogoImageData(): Promise<Uint8Array | null> {
   try {
     const response = await fetch('/images/meridian-logo.png');
-    if (!response.ok) return null;
-    const buffer = await response.arrayBuffer();
-    return new Uint8Array(buffer);
+    if (response.ok) {
+      const buffer = await response.arrayBuffer();
+      const data = new Uint8Array(buffer);
+      // Cache for offline use
+      cacheLogo(data).catch(() => {});
+      return data;
+    }
   } catch {
-    return null;
+    // Fetch failed (offline) — try IndexedDB cache
   }
+  // Fallback: load from IndexedDB cache
+  return getCachedLogo();
 }
