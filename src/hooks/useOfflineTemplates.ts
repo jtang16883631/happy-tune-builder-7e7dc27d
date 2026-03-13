@@ -205,11 +205,30 @@ async function _doInit(): Promise<Database | null> {
   _initPromise = (async () => {
     try {
       console.log('[OfflineDB] Singleton init starting…');
+      const isElectron = _isElectron();
+      console.log(`[OfflineDB] Storage backend: ${isElectron ? 'Electron local file' : 'IndexedDB'}`);
       const SQL = await initSqlWithCache('OfflineDB');
       _sqlRef = SQL;
 
-      const savedDb = await loadFromIndexedDB<Uint8Array>(DB_KEY);
-      console.log(`[OfflineDB] IndexedDB data: ${savedDb ? `${(savedDb.byteLength / 1024).toFixed(0)} KB` : 'null'}`);
+      // Try Electron file system first, then fall back to IndexedDB
+      let savedDb: Uint8Array | null = null;
+      if (isElectron) {
+        savedDb = await _electronLoad();
+        if (savedDb) {
+          console.log(`[OfflineDB] Local file data: ${(savedDb.byteLength / 1024).toFixed(0)} KB`);
+        } else {
+          // Migration: try loading from IndexedDB and save to local file
+          const idbData = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+          if (idbData) {
+            console.log(`[OfflineDB] Migrating ${(idbData.byteLength / 1024).toFixed(0)} KB from IndexedDB to local file…`);
+            savedDb = idbData;
+            await _electronSave(idbData);
+          }
+        }
+      } else {
+        savedDb = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+        console.log(`[OfflineDB] IndexedDB data: ${savedDb ? `${(savedDb.byteLength / 1024).toFixed(0)} KB` : 'null'}`);
+      }
 
       if (savedDb) {
         _db = new SQL.Database(savedDb);
@@ -228,8 +247,7 @@ async function _doInit(): Promise<Database | null> {
             _db.run(`ALTER TABLE templates_new RENAME TO templates`);
             _db.run(`CREATE INDEX IF NOT EXISTS idx_templates_date ON templates(inv_date DESC)`);
             _db.run(`CREATE INDEX IF NOT EXISTS idx_templates_cloud ON templates(cloud_id)`);
-            const dbData = _db.export();
-            await saveToIndexedDB(DB_KEY, new Uint8Array(dbData));
+            await _saveDatabase();
             await saveToIndexedDB('migration_v1_done', true);
             console.log('[OfflineDB] Migration v1 complete');
           } catch {
@@ -241,8 +259,7 @@ async function _doInit(): Promise<Database | null> {
         if (!migrationV2Done) {
           try {
             _db.run(`ALTER TABLE templates ADD COLUMN address TEXT`);
-            const dbData = _db.export();
-            await saveToIndexedDB(DB_KEY, new Uint8Array(dbData));
+            await _saveDatabase();
             console.log('[OfflineDB] Migration v2 complete (added address column)');
           } catch {
             // Column may already exist
@@ -256,12 +273,10 @@ async function _doInit(): Promise<Database | null> {
           const cc = _db.exec('SELECT COUNT(*) FROM cost_items');
           const templateCount = tc[0]?.values[0][0] as number;
           const costCount = cc[0]?.values[0][0] as number;
-          // Detailed: how many have cloud_id (downloaded online) vs null (flash-drive imported)
           const cloudCount = _db.exec('SELECT COUNT(*) FROM templates WHERE cloud_id IS NOT NULL');
           const localCount = _db.exec('SELECT COUNT(*) FROM templates WHERE cloud_id IS NULL');
           console.log(`[OfflineDB] Restored: ${templateCount} templates (${cloudCount[0]?.values[0][0]} cloud-synced, ${localCount[0]?.values[0][0]} local-only), ${costCount} cost_items`);
           
-          // Log template names for cold-start debugging
           try {
             const names = _db.exec('SELECT name, cloud_id FROM templates LIMIT 10');
             if (names.length > 0) {
@@ -270,13 +285,12 @@ async function _doInit(): Promise<Database | null> {
             }
           } catch {}
           
-          // Verify against manifest
           try {
             const manifest = localStorage.getItem('offline_manifest');
             if (manifest) {
               const parsed = JSON.parse(manifest);
               if (parsed.templateCount && templateCount < parsed.templateCount) {
-                console.warn(`[OfflineDB] Template count mismatch! Expected ${parsed.templateCount}, got ${templateCount}. IndexedDB may have lost data.`);
+                console.warn(`[OfflineDB] Template count mismatch! Expected ${parsed.templateCount}, got ${templateCount}. Data may have been lost.`);
               }
             }
           } catch {}
@@ -286,13 +300,12 @@ async function _doInit(): Promise<Database | null> {
         _db.run(SCHEMA_SQL);
         console.log('[OfflineDB] Created fresh database (not persisted until data is added)');
         
-        // Check if manifest says we should have data
         try {
           const manifest = localStorage.getItem('offline_manifest');
           if (manifest) {
             const parsed = JSON.parse(manifest);
             if (parsed.offlineReady && parsed.templateCount > 0) {
-              console.error(`[OfflineDB] CRITICAL: Manifest says ${parsed.templateCount} templates should exist, but IndexedDB returned empty! Data may have been lost.`);
+              console.error(`[OfflineDB] CRITICAL: Manifest says ${parsed.templateCount} templates should exist, but storage returned empty! Data may have been lost.`);
             }
           }
         } catch {}
@@ -315,18 +328,29 @@ async function _saveDatabase(database?: Database) {
   if (!targetDb) return;
   const dbData = targetDb.export();
   const bytes = new Uint8Array(dbData);
-  console.log(`[OfflineDB] Saving ${(bytes.byteLength / 1024).toFixed(0)} KB to IndexedDB…`);
-  await saveToIndexedDB(DB_KEY, bytes);
-  // Verify write succeeded by reading back size
-  try {
-    const readBack = await loadFromIndexedDB<Uint8Array>(DB_KEY);
-    if (!readBack || readBack.byteLength !== bytes.byteLength) {
-      console.error(`[OfflineDB] SAVE VERIFICATION FAILED! Wrote ${bytes.byteLength} but read back ${readBack?.byteLength ?? 0}`);
-    } else {
-      console.log(`[OfflineDB] Save verified: ${(readBack.byteLength / 1024).toFixed(0)} KB confirmed in IndexedDB`);
+  const sizeKB = (bytes.byteLength / 1024).toFixed(0);
+
+  // Use Electron file system if available, otherwise IndexedDB
+  if (_isElectron()) {
+    console.log(`[OfflineDB] Saving ${sizeKB} KB to local file…`);
+    const saved = await _electronSave(bytes);
+    if (!saved) {
+      console.error('[OfflineDB] SAVE TO LOCAL FILE FAILED! Falling back to IndexedDB…');
+      await saveToIndexedDB(DB_KEY, bytes);
     }
-  } catch (verifyErr) {
-    console.error('[OfflineDB] Save verification error:', verifyErr);
+  } else {
+    console.log(`[OfflineDB] Saving ${sizeKB} KB to IndexedDB…`);
+    await saveToIndexedDB(DB_KEY, bytes);
+    try {
+      const readBack = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+      if (!readBack || readBack.byteLength !== bytes.byteLength) {
+        console.error(`[OfflineDB] SAVE VERIFICATION FAILED! Wrote ${bytes.byteLength} but read back ${readBack?.byteLength ?? 0}`);
+      } else {
+        console.log(`[OfflineDB] Save verified: ${(readBack.byteLength / 1024).toFixed(0)} KB confirmed in IndexedDB`);
+      }
+    } catch (verifyErr) {
+      console.error('[OfflineDB] Save verification error:', verifyErr);
+    }
   }
 }
 
