@@ -108,7 +108,7 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
   // Only treat as "no role" if auth is done AND roles have been loaded AND still empty AND we're online
   // This prevents showing "Access Restricted" while roles are still being fetched
   const hasNoRole = !authLoading && rolesLoaded && roles.length === 0 && isOnline;
-  const offlineAllowedRoute = ['/scan', '/fda', '/auth'].includes(location.pathname);
+  const offlineAllowedRoute = ['/scan', '/fda', '/compile', '/auth'].includes(location.pathname);
 
   // ---- OFFLINE MODE: show locked 2-tab layout ----
   if (!isOnline && isOfflineRoute) {

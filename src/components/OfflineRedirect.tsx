@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Routes that are fully available offline (no auth required when offline)
-const OFFLINE_ROUTES = ['/scan', '/fda', '/auth'];
+const OFFLINE_ROUTES = ['/scan', '/fda', '/compile', '/auth'];
 
 export function OfflineRedirect() {
   const navigate = useNavigate();
