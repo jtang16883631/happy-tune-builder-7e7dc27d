@@ -263,7 +263,7 @@ function AppRoutes() {
         <Route
           path="/compile"
           element={
-            <ProtectedRoute redirectAuditors>
+            <ProtectedRoute allowOffline redirectAuditors>
               <Compile />
             </ProtectedRoute>
           }
