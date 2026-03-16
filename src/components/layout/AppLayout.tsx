@@ -341,10 +341,10 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
           <p className="text-[10px] text-white/30 text-center mt-2 select-none">
             Build: {(() => {
               try {
-                const ts = Number(__BUILD_TIMESTAMP__);
+                const ts = Number((globalThis as any).__BUILD_TIMESTAMP__ ?? '0');
                 const d = new Date(ts);
                 return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-              } catch { return __BUILD_TIMESTAMP__; }
+              } catch { return String((globalThis as any).__BUILD_TIMESTAMP__ ?? 'unknown'); }
             })()}
           </p>
         </div>
