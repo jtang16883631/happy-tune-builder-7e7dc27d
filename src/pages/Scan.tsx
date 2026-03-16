@@ -339,6 +339,7 @@ const Scan = () => {
   const [scanRows, setScanRows] = useState<ScanRow[]>([createEmptyRow()]);
   const [activeRowIndex, setActiveRowIndex] = useState(0);
   const [activeColKey, setActiveColKey] = useState<string | null>(null);
+  const { pushUndo, undo, redo, clear: clearUndoHistory } = useScanUndoRedo();
   
   // Multi-cell selection state (Excel-like range selection)
   const [selectionStart, setSelectionStart] = useState<{ row: number; col: string } | null>(null);
