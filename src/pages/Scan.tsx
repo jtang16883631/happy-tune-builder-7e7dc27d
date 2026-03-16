@@ -687,6 +687,7 @@ const Scan = () => {
     setSelectedSection(null); // Reset section selection
     setScanRows([createEmptyRow()]); // Start with empty row
     setActiveRowIndex(0);
+    clearUndoHistory();
     
     // Load sections and cost sheets for this template
     await Promise.all([
