@@ -6,7 +6,6 @@ import "./index.css";
 // === Build-timestamp cache-busting ===
 // NOTE: __BUILD_TIMESTAMP__ must be a bare identifier so Vite's `define` replaces it at build time.
 // Using (globalThis as any).__BUILD_TIMESTAMP__ is a property access and will NOT be replaced.
-declare const __BUILD_TIMESTAMP__: string | undefined;
 const CURRENT_BUILD = (typeof __BUILD_TIMESTAMP__ !== 'undefined') ? __BUILD_TIMESTAMP__ : String(Date.now());
 const STORED_BUILD = localStorage.getItem('build_timestamp');
 
