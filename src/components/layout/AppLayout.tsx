@@ -341,9 +341,8 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
           <p className="text-[10px] text-white/30 text-center mt-2 select-none">
             Build: {(() => {
               try {
-                // Use bare identifier so Vite's define replaces it at build time
-                declare const __BUILD_TIMESTAMP__: string | undefined;
-                const ts = Number((typeof __BUILD_TIMESTAMP__ !== 'undefined') ? __BUILD_TIMESTAMP__ : '0');
+                // @ts-ignore - __BUILD_TIMESTAMP__ is replaced by Vite define at build time
+                const ts = Number(typeof __BUILD_TIMESTAMP__ !== 'undefined' ? __BUILD_TIMESTAMP__ : '0');
                 const d = new Date(ts);
                 return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
               } catch { return 'unknown'; }
