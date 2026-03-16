@@ -24,6 +24,10 @@ interface ElectronAPI {
   offlineGetPath: () => Promise<string>;
 }
 
-interface Window {
-  electronAPI?: ElectronAPI;
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
+  }
 }
+
+export {};
