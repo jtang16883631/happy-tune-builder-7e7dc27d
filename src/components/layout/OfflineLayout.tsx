@@ -39,7 +39,7 @@ export function OfflineLayout({ children }: OfflineLayoutProps) {
           <span className="text-sm font-semibold tracking-wide">MERIDIAN PORTAL — OFFLINE MODE</span>
         </div>
         <div className="flex-1" />
-        <span className="text-xs text-white/50">Only Audit & Master Data are available offline</span>
+        <span className="text-xs text-white/50">Audit, Compile & Master Data available offline</span>
       </header>
 
       {/* Tab bar */}
