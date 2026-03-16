@@ -18,6 +18,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useCloudTemplates, CloudTemplate, CloudSection, TemplateStatus } from '@/hooks/useCloudTemplates';
 import { useOfflineTemplates, OfflineTemplate } from '@/hooks/useOfflineTemplates';
 import { useLocalFDA, FDADrug } from '@/hooks/useLocalFDA';
+import { useScanUndoRedo } from '@/hooks/useScanUndoRedo';
 import { SyncButton } from '@/components/scanner/SyncButton';
 import { DeviceSyncDialog } from '@/components/scanner/DeviceSyncDialog';
 import { ManageDeviceDialog } from '@/components/scanner/ManageDeviceDialog';
@@ -338,6 +339,7 @@ const Scan = () => {
   const [scanRows, setScanRows] = useState<ScanRow[]>([createEmptyRow()]);
   const [activeRowIndex, setActiveRowIndex] = useState(0);
   const [activeColKey, setActiveColKey] = useState<string | null>(null);
+  const { pushUndo, undo, redo, clear: clearUndoHistory } = useScanUndoRedo();
   
   // Multi-cell selection state (Excel-like range selection)
   const [selectionStart, setSelectionStart] = useState<{ row: number; col: string } | null>(null);
@@ -685,6 +687,7 @@ const Scan = () => {
     setSelectedSection(null); // Reset section selection
     setScanRows([createEmptyRow()]); // Start with empty row
     setActiveRowIndex(0);
+    clearUndoHistory();
     
     // Load sections and cost sheets for this template
     await Promise.all([
@@ -1327,9 +1330,61 @@ const Scan = () => {
     setPendingNDCLookup(null);
   }, []);
 
-  // Handle field change - recalculate Extended when QTY or Unit Cost changes
+  // ─── Ctrl+Z / Ctrl+Y undo/redo for cell edits ─────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        const entry = undo();
+        if (!entry) return;
+        setScanRows(prev => {
+          const updated = [...prev];
+          if (!updated[entry.rowIndex]) return prev;
+          if (entry.oldRow) {
+            // Full row restore (NDC clear case)
+            updated[entry.rowIndex] = entry.oldRow as ScanRow;
+          } else {
+            updated[entry.rowIndex] = { ...updated[entry.rowIndex], [entry.field]: entry.oldValue };
+          }
+          return updated;
+        });
+        toast.info('Undo', { duration: 1500 });
+      }
+      
+      if ((e.key === 'y') || (e.key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        const entry = redo();
+        if (!entry) return;
+        setScanRows(prev => {
+          const updated = [...prev];
+          if (!updated[entry.rowIndex]) return prev;
+          if (entry.newRow) {
+            updated[entry.rowIndex] = entry.newRow as ScanRow;
+          } else {
+            updated[entry.rowIndex] = { ...updated[entry.rowIndex], [entry.field]: entry.newValue };
+          }
+          return updated;
+        });
+        toast.info('Redo', { duration: 1500 });
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
+
+
   // When scannedNdc is changed, clear all previous lookup data so stale info doesn't persist
   const handleFieldChange = (field: keyof ScanRow, value: string | number | null, rowIndex: number) => {
+    // Track undo before mutation
+    const oldValue = scanRows[rowIndex]?.[field] ?? null;
+    if (field === 'scannedNdc') {
+      // For NDC changes, snapshot the whole row since many fields get cleared
+      pushUndo({ rowIndex, field, oldValue: oldValue as any, newValue: value, oldRow: { ...scanRows[rowIndex] } });
+    } else {
+      pushUndo({ rowIndex, field, oldValue: oldValue as any, newValue: value });
+    }
     setScanRows(prev => {
       const updated = [...prev];
       let row = { ...updated[rowIndex], [field]: value };
