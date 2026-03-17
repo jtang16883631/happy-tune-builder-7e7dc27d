@@ -886,16 +886,16 @@ export function useDataTemplates() {
         
         // Copy cost items
         const costResult = sourceDb.exec(`
-          SELECT ndc, material_description, unit_price, source, material, sheet_name
+          SELECT ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose
           FROM cost_items WHERE template_id = ?
         `, [sourceId]);
         
         if (costResult.length > 0) {
           for (const cRow of costResult[0].values) {
             db.run(`
-              INSERT INTO cost_items (template_id, ndc, material_description, unit_price, source, material, sheet_name)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [newTemplateId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5]]);
+              INSERT INTO cost_items (template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [newTemplateId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5], cRow[6], cRow[7], cRow[8], cRow[9], cRow[10], cRow[11]]);
           }
         }
         
