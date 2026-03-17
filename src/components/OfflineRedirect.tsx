@@ -146,3 +146,20 @@ export function useOnlineStatus(): boolean {
   const { isOnline } = useOnlineStatusFull();
   return isOnline;
 }
+
+// -----------------------------------------------------------------------
+// Force offline helpers
+// -----------------------------------------------------------------------
+export function setForceOfflineMode(enabled: boolean) {
+  if (enabled) {
+    localStorage.setItem('force_offline_mode', 'true');
+  } else {
+    localStorage.removeItem('force_offline_mode');
+  }
+  // Trigger online/offline re-evaluation
+  window.dispatchEvent(new Event(enabled ? 'offline' : 'online'));
+}
+
+export function isForceOfflineMode(): boolean {
+  return localStorage.getItem('force_offline_mode') === 'true';
+}
