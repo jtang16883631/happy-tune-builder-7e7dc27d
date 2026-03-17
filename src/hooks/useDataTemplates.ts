@@ -1246,7 +1246,7 @@ export function useDataTemplates() {
       job_ticket_file_name: string | null;
     }>,
     getSectionsForTemplate: (templateId: string) => Promise<Array<{ sect: string; description: string | null; full_section: string | null; cost_sheet: string | null }>>,
-    getCostItemsForTemplate: (templateId: string) => Promise<Array<{ ndc: string | null; material_description: string | null; unit_price: number | null; source: string | null; material: string | null; sheet_name: string | null }>>,
+    getCostItemsForTemplate: (templateId: string) => Promise<Array<{ ndc: string | null; material_description: string | null; unit_price: number | null; source: string | null; material: string | null; sheet_name: string | null; billing_date: string | null; manufacturer: string | null; generic: string | null; strength: string | null; size: string | null; dose: string | null }>>,
     onProgress?: (progress: { template: string; current: number; total: number }) => void
   ): Promise<{ data: Uint8Array; meta: TemplateMeta } | null> => {
     if (!sqlRef.current) return null;
