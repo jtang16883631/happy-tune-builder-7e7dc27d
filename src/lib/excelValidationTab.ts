@@ -146,8 +146,9 @@ export function buildValidationData(
         empData.timeStrings.push(time);
       }
       empData.entryCount += 1;
-      if (typeof extended === 'number') {
-        empData.sumOfEntries += extended;
+      const qty = record.qty ?? 0;
+      if (typeof qty === 'number') {
+        empData.sumOfEntries += qty;
       }
 
       // Also aggregate for employee analytics
@@ -161,8 +162,9 @@ export function buildValidationData(
         globalEmpData.timeStrings.push(time);
       }
       globalEmpData.entryCount += 1;
-      if (typeof extended === 'number') {
-        globalEmpData.sumOfEntries += extended;
+      const globalQty = record.qty ?? 0;
+      if (typeof globalQty === 'number') {
+        globalEmpData.sumOfEntries += globalQty;
       }
     });
 
@@ -326,11 +328,11 @@ export function createValidationWorksheet(
     const sectionName = sectionSheetNames[i] || balanceChecks[i]?.dataSheet || '';
     const escapedSectionName = sectionName.replace(/"/g, '""'); // Escape double quotes for SUMIF criteria
     
-    // From Summary formula: references Summary sheet's Value column (B in new styled layout)
+    // From Summary formula: references Summary sheet's Value column (C in styled layout)
     const fromSummaryCell = `B${excelRow}`;
     worksheet[fromSummaryCell] = {
       t: 'n',
-      f: `IF(Summary!B${summaryRow}="",0,IFERROR(Summary!B${summaryRow},0))`,
+      f: `IF(Summary!C${summaryRow}="",0,IFERROR(Summary!C${summaryRow},0))`,
       z: '"$"#,##0.00'
     };
     
@@ -394,7 +396,7 @@ export function createValidationWorksheet(
   ];
 
   // Apply currency formatting to static value columns
-  const currencyCols = [2, 13, 21]; // C, N, V (0-indexed) - B and D are formulas with format already
+  const currencyCols = [2]; // C (0-indexed) - N and V are now counts, not currency
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
   
   for (let R = 4; R <= range.e.r; R++) { // Start from data rows
