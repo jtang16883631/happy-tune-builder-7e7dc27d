@@ -1259,15 +1259,16 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     ): Promise<Array<{
       id: string; ndc: string | null; material_description: string | null;
       unit_price: number | null; source: string | null; material: string | null;
-      sheet_name: string | null;
+      sheet_name: string | null; billing_date: string | null; manufacturer: string | null;
+      generic: string | null; strength: string | null; size: string | null; dose: string | null;
     }>> => {
       if (!db) return [];
       try {
         const likeQuery = `%${query}%`;
-        let sql = `SELECT rowid as id, ndc, material_description, unit_price, source, material, sheet_name
+        let sql = `SELECT rowid as id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose
                    FROM cost_items WHERE template_id = ?
-                   AND (ndc LIKE ? OR material_description LIKE ? OR material LIKE ?)`;
-        const params: any[] = [templateId, likeQuery, likeQuery, likeQuery];
+                   AND (ndc LIKE ? OR material_description LIKE ? OR material LIKE ? OR manufacturer LIKE ? OR generic LIKE ?)`;
+        const params: any[] = [templateId, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery];
         if (sheetName) {
           sql += ` AND sheet_name = ?`;
           params.push(sheetName);
@@ -1279,7 +1280,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           id: String(row[0]), ndc: row[1] as string | null,
           material_description: row[2] as string | null, unit_price: row[3] as number | null,
           source: row[4] as string | null, material: row[5] as string | null,
-          sheet_name: row[6] as string | null,
+          sheet_name: row[6] as string | null, billing_date: row[7] as string | null,
+          manufacturer: row[8] as string | null, generic: row[9] as string | null,
+          strength: row[10] as string | null, size: row[11] as string | null,
+          dose: row[12] as string | null,
         }));
       } catch (err) { console.error('[OfflineDB] searchCostItems error:', err); return []; }
     }, [db]),

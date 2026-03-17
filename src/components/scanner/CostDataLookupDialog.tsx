@@ -259,8 +259,9 @@ export function CostDataLookupDialog({
         const mapped: CostItem[] = results.map(r => ({
           id: r.id, ndc: r.ndc, material_description: r.material_description,
           unit_price: r.unit_price, source: r.source, material: r.material,
-          billing_date: null, manufacturer: null, generic: null,
-          strength: null, size: null, dose: null, sheet_name: r.sheet_name,
+          billing_date: r.billing_date ?? null, manufacturer: r.manufacturer ?? null,
+          generic: r.generic ?? null, strength: r.strength ?? null,
+          size: r.size ?? null, dose: r.dose ?? null, sheet_name: r.sheet_name,
         }));
         setFilteredItems(mapped);
       } else {
