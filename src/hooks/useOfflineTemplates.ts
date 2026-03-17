@@ -603,8 +603,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             }
 
             setSyncProgress(prev => ({ ...prev, status: 'fetching_cost_items', costItemsFetched: 0 }));
-            const BATCH_SIZE = 5000;
-            const CONCURRENCY = 4;
+            const BATCH_SIZE = 2000;
+            const CONCURRENCY = 3;
+            const MAX_RETRIES = 3;
             const totalExpected = countResult.count ?? 0;
             let totalCostItemsFetched = 0;
 
@@ -613,25 +614,35 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
-            // Use parallel .range() fetching for maximum speed
+            // Helper to fetch a single range with retry
+            const fetchRangeWithRetry = async (from: number, to: number, attempt = 0): Promise<{ from: number; data: any[] | null; error: any }> => {
+              const res = await supabase
+                .from('template_cost_items')
+                .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
+                .eq('template_id', ct.id)
+                .order('id', { ascending: true })
+                .range(from, to);
+              if (res.error && attempt < MAX_RETRIES) {
+                const isRetryable = res.error.code === '57014' || res.error.message?.includes('timeout') || res.error.message?.includes('connection');
+                if (isRetryable) {
+                  console.log(`[OfflineDB] Retry ${attempt + 1} for range ${from}-${to} (${res.error.code})`);
+                  await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+                  return fetchRangeWithRetry(from, to, attempt + 1);
+                }
+              }
+              return { from, data: res.data, error: res.error };
+            };
+
+            // Use parallel .range() fetching with retry
             let offset = 0;
             let done = false;
             while (!done) {
-              // Fire CONCURRENCY parallel requests
               const rangePromises = [];
               for (let p = 0; p < CONCURRENCY; p++) {
                 const from = offset + p * BATCH_SIZE;
                 const to = from + BATCH_SIZE - 1;
                 if (totalExpected > 0 && from >= totalExpected) break;
-                rangePromises.push(
-                  supabase
-                    .from('template_cost_items')
-                    .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
-                    .eq('template_id', ct.id)
-                    .order('id', { ascending: true })
-                    .range(from, to)
-                    .then(res => ({ from, data: res.data, error: res.error }))
-                );
+                rangePromises.push(fetchRangeWithRetry(from, to));
               }
 
               if (rangePromises.length === 0) break;
