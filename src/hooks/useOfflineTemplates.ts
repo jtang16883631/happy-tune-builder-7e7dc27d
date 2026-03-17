@@ -997,8 +997,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [local.id]);
           if (sectResult.length > 0) { for (const row of sectResult[0].values) { exportDb.run(`INSERT INTO sections VALUES (?,?,?,?,?,?)`, row as any[]); } }
 
-          const costResult = db.exec(`SELECT id, template_id, ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`, [local.id]);
-          if (costResult.length > 0) { for (const row of costResult[0].values) { exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?)`, row as any[]); costItemCount++; } }
+          const costResult = db.exec(`SELECT id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose FROM cost_items WHERE template_id = ?`, [local.id]);
+          if (costResult.length > 0) { for (const row of costResult[0].values) { exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row as any[]); costItemCount++; } }
 
           exportedTemplates.push({ id: local.id, name: local.name, inv_date: local.inv_date, facility_name: local.facility_name, inv_number: local.inv_number });
         } else {
