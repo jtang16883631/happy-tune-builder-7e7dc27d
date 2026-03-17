@@ -605,7 +605,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             setSyncProgress(prev => ({ ...prev, status: 'fetching_cost_items', costItemsFetched: 0 }));
             const BATCH_SIZE = 500;
             let totalCostItemsFetched = 0;
-            let lastId = '';
+            let lastId = '00000000-0000-0000-0000-000000000000';
 
             const costStmt = activeDb.prepare(`
               INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
