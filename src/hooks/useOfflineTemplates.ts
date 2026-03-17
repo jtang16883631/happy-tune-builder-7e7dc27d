@@ -150,6 +150,42 @@ const loadFromIndexedDB = async <T>(key: string): Promise<T | null> => {
   });
 };
 
+const normalizePersistedDbBytes = (value: unknown): Uint8Array | null => {
+  if (!value) return null;
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const record = value as {
+      buffer?: ArrayBuffer;
+      byteOffset?: number;
+      byteLength?: number;
+      data?: unknown;
+    };
+
+    if (record.data instanceof Uint8Array) return record.data;
+    if (record.data instanceof ArrayBuffer) return new Uint8Array(record.data);
+
+    if (record.buffer instanceof ArrayBuffer && typeof record.byteLength === 'number') {
+      const start = typeof record.byteOffset === 'number' ? record.byteOffset : 0;
+      return new Uint8Array(record.buffer.slice(start, start + record.byteLength));
+    }
+  }
+
+  return null;
+};
+
+const describePersistedDbValue = (value: unknown): string => {
+  if (!value) return 'null';
+  if (value instanceof Uint8Array) return 'Uint8Array';
+  if (value instanceof ArrayBuffer) return 'ArrayBuffer';
+  if (ArrayBuffer.isView(value)) return value.constructor.name;
+  return Object.prototype.toString.call(value);
+};
+
 const generateId = () => crypto.randomUUID();
 
 const ensureOfflineSchema = async (database: Database, persist = false): Promise<void> => {
@@ -253,8 +289,11 @@ async function _doInit(): Promise<Database | null> {
         if (savedDb) {
           console.log(`[OfflineDB] Local file data: ${(savedDb.byteLength / 1024).toFixed(0)} KB`);
         } else {
-          // Migration: try loading from IndexedDB and save to local file
-          const idbData = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+          const idbDataRaw = await loadFromIndexedDB<unknown>(DB_KEY);
+          const idbData = normalizePersistedDbBytes(idbDataRaw);
+          if (idbDataRaw) {
+            console.log(`[OfflineDB] IndexedDB fallback data: ${idbData ? `${(idbData.byteLength / 1024).toFixed(0)} KB` : 'unreadable'} (${describePersistedDbValue(idbDataRaw)})`);
+          }
           if (idbData) {
             console.log(`[OfflineDB] Migrating ${(idbData.byteLength / 1024).toFixed(0)} KB from IndexedDB to local file…`);
             savedDb = idbData;
@@ -262,8 +301,12 @@ async function _doInit(): Promise<Database | null> {
           }
         }
       } else {
-        savedDb = await loadFromIndexedDB<Uint8Array>(DB_KEY);
-        console.log(`[OfflineDB] IndexedDB data: ${savedDb ? `${(savedDb.byteLength / 1024).toFixed(0)} KB` : 'null'}`);
+        const savedDbRaw = await loadFromIndexedDB<unknown>(DB_KEY);
+        savedDb = normalizePersistedDbBytes(savedDbRaw);
+        console.log(`[OfflineDB] IndexedDB data: ${savedDb ? `${(savedDb.byteLength / 1024).toFixed(0)} KB` : 'null'} (${describePersistedDbValue(savedDbRaw)})`);
+        if (savedDbRaw && !savedDb) {
+          console.error('[OfflineDB] Unsupported IndexedDB database payload format; expected ArrayBuffer/Uint8Array');
+        }
       }
 
       if (savedDb) {
@@ -278,7 +321,7 @@ async function _doInit(): Promise<Database | null> {
           const cloudCount = _db.exec('SELECT COUNT(*) FROM templates WHERE cloud_id IS NOT NULL');
           const localCount = _db.exec('SELECT COUNT(*) FROM templates WHERE cloud_id IS NULL');
           console.log(`[OfflineDB] Restored: ${templateCount} templates (${cloudCount[0]?.values[0][0]} cloud-synced, ${localCount[0]?.values[0][0]} local-only), ${costCount} cost_items`);
-          
+
           try {
             const names = _db.exec('SELECT name, cloud_id FROM templates LIMIT 10');
             if (names.length > 0) {
@@ -286,7 +329,7 @@ async function _doInit(): Promise<Database | null> {
               console.log(`[OfflineDB] Templates: ${list}`);
             }
           } catch {}
-          
+
           try {
             const manifest = localStorage.getItem('offline_manifest');
             if (manifest) {
@@ -301,7 +344,7 @@ async function _doInit(): Promise<Database | null> {
         _db = new SQL.Database();
         await ensureOfflineSchema(_db);
         console.log('[OfflineDB] Created fresh database (not persisted until data is added)');
-        
+
         try {
           const manifest = localStorage.getItem('offline_manifest');
           if (manifest) {
@@ -330,6 +373,7 @@ async function _saveDatabase(database?: Database) {
   if (!targetDb) return;
   const dbData = targetDb.export();
   const bytes = new Uint8Array(dbData);
+  const bytesForIndexedDb = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const sizeKB = (bytes.byteLength / 1024).toFixed(0);
 
   // Use Electron file system if available, otherwise IndexedDB
@@ -338,15 +382,16 @@ async function _saveDatabase(database?: Database) {
     const saved = await _electronSave(bytes);
     if (!saved) {
       console.error('[OfflineDB] SAVE TO LOCAL FILE FAILED! Falling back to IndexedDB…');
-      await saveToIndexedDB(DB_KEY, bytes);
+      await saveToIndexedDB(DB_KEY, bytesForIndexedDb);
     }
   } else {
     console.log(`[OfflineDB] Saving ${sizeKB} KB to IndexedDB…`);
-    await saveToIndexedDB(DB_KEY, bytes);
+    await saveToIndexedDB(DB_KEY, bytesForIndexedDb);
     try {
-      const readBack = await loadFromIndexedDB<Uint8Array>(DB_KEY);
+      const readBackRaw = await loadFromIndexedDB<unknown>(DB_KEY);
+      const readBack = normalizePersistedDbBytes(readBackRaw);
       if (!readBack || readBack.byteLength !== bytes.byteLength) {
-        console.error(`[OfflineDB] SAVE VERIFICATION FAILED! Wrote ${bytes.byteLength} but read back ${readBack?.byteLength ?? 0}`);
+        console.error(`[OfflineDB] SAVE VERIFICATION FAILED! Wrote ${bytes.byteLength} but read back ${readBack?.byteLength ?? 0} (${describePersistedDbValue(readBackRaw)})`);
       } else {
         console.log(`[OfflineDB] Save verified: ${(readBack.byteLength / 1024).toFixed(0)} KB confirmed in IndexedDB`);
       }
