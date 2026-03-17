@@ -384,7 +384,7 @@ export function CostDataLookupDialog({
           <DollarSign className="h-4 w-4 shrink-0" />
           <span className="truncate">Cost Data Lookup</span>
           {useOfflineMode && (
-            <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-normal text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400">
+            <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
               Offline
             </span>
           )}
