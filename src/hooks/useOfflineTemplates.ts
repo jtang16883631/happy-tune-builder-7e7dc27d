@@ -620,21 +620,21 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             const pageResults = await Promise.all(
               pageNumbers.map(page =>
                 supabase.from('template_cost_items')
-                  .select('id, ndc, material_description, unit_price, source, material, sheet_name')
+                  .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
                   .eq('template_id', ct.id)
                   .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1))
             );
 
             const costStmt = activeDb.prepare(`
-              INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             let totalCostItemsFetched = 0;
             for (const { data: costItems, error: costError } of pageResults) {
               if (costError) throw costError;
               for (const c of costItems || []) {
-                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
+                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               }
               totalCostItemsFetched += (costItems?.length || 0);
               setSyncProgress(prev => ({ ...prev, costItemsFetched: totalCostItemsFetched }));
