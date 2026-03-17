@@ -561,11 +561,13 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     async (templateId: string): Promise<Array<{
       ndc: string | null; material_description: string | null; unit_price: number | null;
       source: string | null; material: string | null; sheet_name: string | null;
+      billing_date: string | null; manufacturer: string | null; generic: string | null;
+      strength: string | null; size: string | null; dose: string | null;
     }>> => {
       if (!db) return [];
       try {
         const results = db.exec(`
-          SELECT ndc, material_description, unit_price, source, material, sheet_name
+          SELECT ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose
           FROM cost_items WHERE template_id = ?
         `, [templateId]);
         if (results.length === 0) return [];
@@ -573,6 +575,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           ndc: row[0] as string | null, material_description: row[1] as string | null,
           unit_price: row[2] as number | null, source: row[3] as string | null,
           material: row[4] as string | null, sheet_name: row[5] as string | null,
+          billing_date: row[6] as string | null, manufacturer: row[7] as string | null,
+          generic: row[8] as string | null, strength: row[9] as string | null,
+          size: row[10] as string | null, dose: row[11] as string | null,
         }));
       } catch (err) { console.error('Get all cost items error:', err); return []; }
     }, [db]);
@@ -931,11 +936,13 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             await supabase.from('template_sections').insert(sectionInserts);
           }
 
-          const costResult = db.exec(`SELECT ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`, [template.id]);
+          const costResult = db.exec(`SELECT ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose FROM cost_items WHERE template_id = ?`, [template.id]);
           if (costResult.length > 0) {
             const costInserts = costResult[0].values.map((c: any[]) => ({
               template_id: newTemplate.id, ndc: c[0], material_description: c[1], unit_price: c[2],
-              source: c[3], material: c[4], sheet_name: c[5] ?? null,
+              source: c[3], material: c[4], sheet_name: c[5] ?? null, billing_date: c[6] ?? null,
+              manufacturer: c[7] ?? null, generic: c[8] ?? null, strength: c[9] ?? null,
+              size: c[10] ?? null, dose: c[11] ?? null,
             }));
             const batchSize = 500;
             for (let i = 0; i < costInserts.length; i += batchSize) {
@@ -1368,8 +1375,33 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         const likeQuery = `%${query}%`;
         let sql = `SELECT rowid as id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose
                    FROM cost_items WHERE template_id = ?
-                   AND (ndc LIKE ? OR material_description LIKE ? OR material LIKE ? OR manufacturer LIKE ? OR generic LIKE ?)`;
-        const params: any[] = [templateId, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery];
+                   AND (
+                     ndc LIKE ? OR
+                     material_description LIKE ? OR
+                     material LIKE ? OR
+                     manufacturer LIKE ? OR
+                     generic LIKE ? OR
+                     strength LIKE ? OR
+                     size LIKE ? OR
+                     dose LIKE ? OR
+                     source LIKE ? OR
+                     billing_date LIKE ? OR
+                     sheet_name LIKE ?
+                   )`;
+        const params: any[] = [
+          templateId,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+          likeQuery,
+        ];
         if (sheetName) {
           sql += ` AND sheet_name = ?`;
           params.push(sheetName);

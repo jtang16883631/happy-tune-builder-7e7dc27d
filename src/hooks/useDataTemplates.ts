@@ -886,16 +886,16 @@ export function useDataTemplates() {
         
         // Copy cost items
         const costResult = sourceDb.exec(`
-          SELECT ndc, material_description, unit_price, source, material, sheet_name
+          SELECT ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose
           FROM cost_items WHERE template_id = ?
         `, [sourceId]);
         
         if (costResult.length > 0) {
           for (const cRow of costResult[0].values) {
             db.run(`
-              INSERT INTO cost_items (template_id, ndc, material_description, unit_price, source, material, sheet_name)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [newTemplateId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5]]);
+              INSERT INTO cost_items (template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [newTemplateId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5], cRow[6], cRow[7], cRow[8], cRow[9], cRow[10], cRow[11]]);
           }
         }
         
@@ -1246,7 +1246,7 @@ export function useDataTemplates() {
       job_ticket_file_name: string | null;
     }>,
     getSectionsForTemplate: (templateId: string) => Promise<Array<{ sect: string; description: string | null; full_section: string | null; cost_sheet: string | null }>>,
-    getCostItemsForTemplate: (templateId: string) => Promise<Array<{ ndc: string | null; material_description: string | null; unit_price: number | null; source: string | null; material: string | null; sheet_name: string | null }>>,
+    getCostItemsForTemplate: (templateId: string) => Promise<Array<{ ndc: string | null; material_description: string | null; unit_price: number | null; source: string | null; material: string | null; sheet_name: string | null; billing_date: string | null; manufacturer: string | null; generic: string | null; strength: string | null; size: string | null; dose: string | null }>>,
     onProgress?: (progress: { template: string; current: number; total: number }) => void
   ): Promise<{ data: Uint8Array; meta: TemplateMeta } | null> => {
     if (!sqlRef.current) return null;
@@ -1366,8 +1366,8 @@ export function useDataTemplates() {
         for (const item of costItems) {
           if (!item.ndc) continue;
           tempDb.run(`
-            INSERT INTO cost_items (template_id, ndc, material_description, unit_price, source, material, sheet_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO cost_items (template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `, [
             localId,
             truncate(item.ndc, 50),
@@ -1375,7 +1375,13 @@ export function useDataTemplates() {
             item.unit_price,
             truncate(item.source, 50),
             truncate(item.material, 50),
-            truncate(item.sheet_name, 50)
+            truncate(item.sheet_name, 50),
+            truncate(item.billing_date, 50),
+            truncate(item.manufacturer, 100),
+            truncate(item.generic, 200),
+            truncate(item.strength, 50),
+            truncate(item.size, 50),
+            truncate(item.dose, 50),
           ]);
         }
       }
