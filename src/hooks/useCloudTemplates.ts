@@ -63,10 +63,22 @@ export function useCloudTemplates() {
 
     try {
       setIsLoading(true);
-      const { data, error: fetchError } = await supabase
-        .from('data_templates')
-        .select('*')
-        .order('inv_date', { ascending: false, nullsFirst: false });
+      // Fetch all templates (Supabase defaults to 1000 row limit)
+      let allTemplates: any[] = [];
+      let from = 0;
+      const pageSize = 2000;
+      while (true) {
+        const { data, error: fetchError } = await supabase
+          .from('data_templates')
+          .select('*')
+          .order('inv_date', { ascending: false, nullsFirst: false })
+          .range(from, from + pageSize - 1);
+        if (fetchError) throw fetchError;
+        if (!data || data.length === 0) break;
+        allTemplates = allTemplates.concat(data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
 
       if (fetchError) throw fetchError;
       setTemplates((data || []) as CloudTemplate[]);
