@@ -603,37 +603,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             }
 
             setSyncProgress(prev => ({ ...prev, status: 'fetching_cost_items', costItemsFetched: 0 }));
-            const BATCH_SIZE = 1000;
+            const BATCH_SIZE = 5000;
+            const CONCURRENCY = 4;
+            const totalExpected = countResult.count ?? 0;
             let totalCostItemsFetched = 0;
-            let lastId = '00000000-0000-0000-0000-000000000000';
-
-            const costStmt = activeDb.prepare(`
-              INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-
-            while (true) {
-              const { data: costItems, error: costError } = await supabase
-                .from('template_cost_items')
-                .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
-                .eq('template_id', ct.id)
-                .gt('id', lastId)
-                .order('id', { ascending: true })
-                .limit(BATCH_SIZE);
-
-              if (costError) throw costError;
-              if (!costItems || costItems.length === 0) break;
-
-              for (const c of costItems) {
-                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
-              }
-
-              totalCostItemsFetched += costItems.length;
-              lastId = costItems[costItems.length - 1].id;
-              setSyncProgress(prev => ({ ...prev, costItemsFetched: totalCostItemsFetched }));
-
-              if (costItems.length < BATCH_SIZE) break;
-            }
             costStmt.free();
             activeDb.run('COMMIT');
           } catch (txErr) {
