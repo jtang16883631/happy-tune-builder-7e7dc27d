@@ -188,6 +188,7 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS cost_items (
     id TEXT PRIMARY KEY, template_id TEXT NOT NULL, ndc TEXT,
     material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT,
+    billing_date TEXT, manufacturer TEXT, generic TEXT, strength TEXT, size TEXT, dose TEXT,
     FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_templates_date ON templates(inv_date DESC);
@@ -265,6 +266,19 @@ async function _doInit(): Promise<Database | null> {
             // Column may already exist
           }
           await saveToIndexedDB('migration_v2_done', true);
+        }
+        // Run v3 migration: add extended cost columns to cost_items
+        const migrationV3Done = await loadFromIndexedDB<boolean>('migration_v3_done');
+        if (!migrationV3Done) {
+          try {
+            const colsToAdd = ['billing_date TEXT', 'manufacturer TEXT', 'generic TEXT', 'strength TEXT', 'size TEXT', 'dose TEXT'];
+            for (const col of colsToAdd) {
+              try { _db.run(`ALTER TABLE cost_items ADD COLUMN ${col}`); } catch { /* column may exist */ }
+            }
+            await _saveDatabase();
+            console.log('[OfflineDB] Migration v3 complete (added extended cost columns)');
+          } catch {}
+          await saveToIndexedDB('migration_v3_done', true);
         }
         _db.run(SCHEMA_SQL);
 
@@ -606,21 +620,21 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             const pageResults = await Promise.all(
               pageNumbers.map(page =>
                 supabase.from('template_cost_items')
-                  .select('id, ndc, material_description, unit_price, source, material, sheet_name')
+                  .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
                   .eq('template_id', ct.id)
                   .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1))
             );
 
             const costStmt = activeDb.prepare(`
-              INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             let totalCostItemsFetched = 0;
             for (const { data: costItems, error: costError } of pageResults) {
               if (costError) throw costError;
               for (const c of costItems || []) {
-                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
+                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               }
               totalCostItemsFetched += (costItems?.length || 0);
               setSyncProgress(prev => ({ ...prev, costItemsFetched: totalCostItemsFetched }));
@@ -751,15 +765,15 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             const pageResults = await Promise.all(
               pageNumbers.map(page =>
                 supabase.from('template_cost_items')
-                  .select('id, ndc, material_description, unit_price, source, material, sheet_name')
+                  .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
                   .eq('template_id', ct.id)
                   .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1))
             );
-            const costStmt = db.prepare(`INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+            const costStmt = db.prepare(`INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             for (const { data: costItems, error: costError } of pageResults) {
               if (costError) continue;
               for (const c of costItems || []) {
-                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
+                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               }
             }
             costStmt.free();
@@ -916,7 +930,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
           description TEXT, full_section TEXT, cost_sheet TEXT);
         CREATE TABLE cost_items (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, ndc TEXT,
-          material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT);
+          material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT,
+          billing_date TEXT, manufacturer TEXT, generic TEXT, strength TEXT, size TEXT, dose TEXT);
       `);
 
       let sectionCount = 0, costItemCount = 0;
@@ -928,8 +943,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [t.id]);
         if (sectResult.length > 0) { for (const row of sectResult[0].values) { exportDb.run(`INSERT INTO sections VALUES (?,?,?,?,?,?)`, row as any[]); sectionCount++; } }
 
-        const costResult = db.exec(`SELECT id, template_id, ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`, [t.id]);
-        if (costResult.length > 0) { for (const row of costResult[0].values) { exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?)`, row as any[]); costItemCount++; } }
+        const costResult = db.exec(`SELECT id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose FROM cost_items WHERE template_id = ?`, [t.id]);
+        if (costResult.length > 0) { for (const row of costResult[0].values) { exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row as any[]); costItemCount++; } }
       }
 
       const dbData = exportDb.export();
@@ -962,7 +977,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
           description TEXT, full_section TEXT, cost_sheet TEXT);
         CREATE TABLE cost_items (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, ndc TEXT,
-          material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT);
+          material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT,
+          billing_date TEXT, manufacturer TEXT, generic TEXT, strength TEXT, size TEXT, dose TEXT);
       `);
 
       let costItemCount = 0;
@@ -981,8 +997,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const sectResult = db.exec(`SELECT id, template_id, sect, description, full_section, cost_sheet FROM sections WHERE template_id = ?`, [local.id]);
           if (sectResult.length > 0) { for (const row of sectResult[0].values) { exportDb.run(`INSERT INTO sections VALUES (?,?,?,?,?,?)`, row as any[]); } }
 
-          const costResult = db.exec(`SELECT id, template_id, ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`, [local.id]);
-          if (costResult.length > 0) { for (const row of costResult[0].values) { exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?)`, row as any[]); costItemCount++; } }
+          const costResult = db.exec(`SELECT id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose FROM cost_items WHERE template_id = ?`, [local.id]);
+          if (costResult.length > 0) { for (const row of costResult[0].values) { exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, row as any[]); costItemCount++; } }
 
           exportedTemplates.push({ id: local.id, name: local.name, inv_date: local.inv_date, facility_name: local.facility_name, inv_number: local.inv_number });
         } else {
@@ -1011,8 +1027,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           );
           for (const { data: items } of pageResults) {
             for (const c of items ?? []) {
-              exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?)`,
-                [generateId(), exportId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null]);
+              exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                [generateId(), exportId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               costItemCount++;
             }
           }
@@ -1120,11 +1136,11 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           }
         }
 
-        const costResult = sourceDb.exec(`SELECT ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`, [sourceId]);
+        const costResult = sourceDb.exec(`SELECT ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose FROM cost_items WHERE template_id = ?`, [sourceId]);
         if (costResult.length > 0) {
           for (const cRow of costResult[0].values) {
-            db.run(`INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              [generateId(), newLocalId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5]]);
+            db.run(`INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [generateId(), newLocalId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5], cRow[6] ?? null, cRow[7] ?? null, cRow[8] ?? null, cRow[9] ?? null, cRow[10] ?? null, cRow[11] ?? null]);
           }
         }
 
@@ -1243,15 +1259,16 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     ): Promise<Array<{
       id: string; ndc: string | null; material_description: string | null;
       unit_price: number | null; source: string | null; material: string | null;
-      sheet_name: string | null;
+      sheet_name: string | null; billing_date: string | null; manufacturer: string | null;
+      generic: string | null; strength: string | null; size: string | null; dose: string | null;
     }>> => {
       if (!db) return [];
       try {
         const likeQuery = `%${query}%`;
-        let sql = `SELECT rowid as id, ndc, material_description, unit_price, source, material, sheet_name
+        let sql = `SELECT rowid as id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose
                    FROM cost_items WHERE template_id = ?
-                   AND (ndc LIKE ? OR material_description LIKE ? OR material LIKE ?)`;
-        const params: any[] = [templateId, likeQuery, likeQuery, likeQuery];
+                   AND (ndc LIKE ? OR material_description LIKE ? OR material LIKE ? OR manufacturer LIKE ? OR generic LIKE ?)`;
+        const params: any[] = [templateId, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery];
         if (sheetName) {
           sql += ` AND sheet_name = ?`;
           params.push(sheetName);
@@ -1263,7 +1280,10 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           id: String(row[0]), ndc: row[1] as string | null,
           material_description: row[2] as string | null, unit_price: row[3] as number | null,
           source: row[4] as string | null, material: row[5] as string | null,
-          sheet_name: row[6] as string | null,
+          sheet_name: row[6] as string | null, billing_date: row[7] as string | null,
+          manufacturer: row[8] as string | null, generic: row[9] as string | null,
+          strength: row[10] as string | null, size: row[11] as string | null,
+          dose: row[12] as string | null,
         }));
       } catch (err) { console.error('[OfflineDB] searchCostItems error:', err); return []; }
     }, [db]),

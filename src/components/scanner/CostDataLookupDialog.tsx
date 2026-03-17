@@ -27,7 +27,8 @@ interface OfflineCostSearchFns {
   searchCostItems: (templateId: string, query: string, sheetName?: string) => Promise<Array<{
     id: string; ndc: string | null; material_description: string | null;
     unit_price: number | null; source: string | null; material: string | null;
-    sheet_name: string | null;
+    sheet_name: string | null; billing_date: string | null; manufacturer: string | null;
+    generic: string | null; strength: string | null; size: string | null; dose: string | null;
   }>>;
   getCostSheetNames: (templateId: string) => string[];
   getCostItemCount: (templateId: string, sheetName?: string) => number;
@@ -62,13 +63,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'dose', label: 'Dose', minWidth: 50, defaultWidth: 60 },
 ];
 
-const OFFLINE_COLUMNS: ColumnDef[] = [
-  { key: 'ndc', label: 'NDC', minWidth: 80, defaultWidth: 140 },
-  { key: 'material_description', label: 'Product Description', minWidth: 150, defaultWidth: 350 },
-  { key: 'unit_price', label: 'Invoice Price', minWidth: 80, defaultWidth: 110 },
-  { key: 'source', label: 'Source', minWidth: 60, defaultWidth: 120 },
-  { key: 'material', label: 'ABC 6', minWidth: 60, defaultWidth: 100 },
-];
+const OFFLINE_COLUMNS: ColumnDef[] = ALL_COLUMNS;
 
 const MIN_WIDTH = 400;
 const MIN_HEIGHT = 300;
@@ -264,8 +259,9 @@ export function CostDataLookupDialog({
         const mapped: CostItem[] = results.map(r => ({
           id: r.id, ndc: r.ndc, material_description: r.material_description,
           unit_price: r.unit_price, source: r.source, material: r.material,
-          billing_date: null, manufacturer: null, generic: null,
-          strength: null, size: null, dose: null, sheet_name: r.sheet_name,
+          billing_date: r.billing_date ?? null, manufacturer: r.manufacturer ?? null,
+          generic: r.generic ?? null, strength: r.strength ?? null,
+          size: r.size ?? null, dose: r.dose ?? null, sheet_name: r.sheet_name,
         }));
         setFilteredItems(mapped);
       } else {
