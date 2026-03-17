@@ -396,7 +396,7 @@ export function createValidationWorksheet(
   ];
 
   // Apply currency formatting to static value columns
-  const currencyCols = [2, 13, 21]; // C, N, V (0-indexed) - B and D are formulas with format already
+  const currencyCols = [2]; // C (0-indexed) - N and V are now counts, not currency
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
   
   for (let R = 4; R <= range.e.r; R++) { // Start from data rows
