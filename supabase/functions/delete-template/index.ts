@@ -6,6 +6,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+async function deleteChunkWithRetry(
+  supabase: any,
+  templateId: string,
+  tableName: string,
+  chunkSize: number,
+  maxRetries = 3
+): Promise<number> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { data, error } = await supabase.rpc('delete_template_chunk', {
+        _template_id: templateId,
+        _table_name: tableName,
+        _chunk_size: chunkSize,
+      });
+      if (error) throw error;
+      return (data as number) || 0;
+    } catch (err: any) {
+      const isRetryable = err?.code === '57014' || err?.message?.includes('connection reset') || err?.message?.includes('SendRequest');
+      if (isRetryable && attempt < maxRetries - 1) {
+        console.log(`[delete-template] Retry ${attempt + 1} for ${tableName} chunk (${err?.code || 'network'})`);
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return 0;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -52,46 +81,33 @@ serve(async (req) => {
 
     console.log(`[delete-template] User ${user.id} deleting template ${templateId}`);
 
-    // Delete large tables in chunks (10K per call to avoid statement timeout)
-    const chunkSize = 10000;
+    // Smaller chunks (5K) to avoid statement timeouts on large templates
+    const chunkSize = 5000;
     let totalScans = 0;
     let totalCost = 0;
 
     // Chunk-delete scan_records
-    for (let i = 0; i < 100; i++) {
-      const { data, error } = await supabase.rpc('delete_template_chunk', {
-        _template_id: templateId,
-        _table_name: 'scan_records',
-        _chunk_size: chunkSize,
-      });
-      if (error) { console.error('[delete-template] scan chunk error:', error); throw error; }
-      totalScans += (data as number) || 0;
-      if ((data as number) < chunkSize) break;
-      console.log(`[delete-template] Scans deleted so far: ${totalScans}`);
+    for (let i = 0; i < 200; i++) {
+      const deleted = await deleteChunkWithRetry(supabase, templateId, 'scan_records', chunkSize);
+      totalScans += deleted;
+      if (deleted < chunkSize) break;
+      if (totalScans % 20000 === 0) console.log(`[delete-template] Scans deleted so far: ${totalScans}`);
     }
 
     // Chunk-delete cost_items
-    for (let i = 0; i < 100; i++) {
-      const { data, error } = await supabase.rpc('delete_template_chunk', {
-        _template_id: templateId,
-        _table_name: 'template_cost_items',
-        _chunk_size: chunkSize,
-      });
-      if (error) { console.error('[delete-template] cost chunk error:', error); throw error; }
-      totalCost += (data as number) || 0;
-      if ((data as number) < chunkSize) break;
-      console.log(`[delete-template] Cost items deleted so far: ${totalCost}`);
+    for (let i = 0; i < 200; i++) {
+      const deleted = await deleteChunkWithRetry(supabase, templateId, 'template_cost_items', chunkSize);
+      totalCost += deleted;
+      if (deleted < chunkSize) break;
+      if (totalCost % 20000 === 0) console.log(`[delete-template] Cost items deleted so far: ${totalCost}`);
     }
 
     // Small tables - direct delete
-    await supabase.rpc('delete_template_chunk', { _template_id: templateId, _table_name: 'template_sections', _chunk_size: chunkSize });
-    await supabase.rpc('delete_template_chunk', { _template_id: templateId, _table_name: 'template_issues', _chunk_size: chunkSize });
+    await deleteChunkWithRetry(supabase, templateId, 'template_sections', chunkSize);
+    await deleteChunkWithRetry(supabase, templateId, 'template_issues', chunkSize);
     
     // Delete template itself
-    const { data: delResult, error: delErr } = await supabase.rpc('delete_template_chunk', { 
-      _template_id: templateId, _table_name: 'data_templates', _chunk_size: 1 
-    });
-    if (delErr) throw delErr;
+    await deleteChunkWithRetry(supabase, templateId, 'data_templates', 1);
 
     const result = { scan_records: totalScans, cost_items: totalCost };
     console.log(`[delete-template] Done:`, result);
