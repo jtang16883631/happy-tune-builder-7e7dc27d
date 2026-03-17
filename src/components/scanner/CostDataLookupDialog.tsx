@@ -27,7 +27,8 @@ interface OfflineCostSearchFns {
   searchCostItems: (templateId: string, query: string, sheetName?: string) => Promise<Array<{
     id: string; ndc: string | null; material_description: string | null;
     unit_price: number | null; source: string | null; material: string | null;
-    sheet_name: string | null;
+    sheet_name: string | null; billing_date: string | null; manufacturer: string | null;
+    generic: string | null; strength: string | null; size: string | null; dose: string | null;
   }>>;
   getCostSheetNames: (templateId: string) => string[];
   getCostItemCount: (templateId: string, sheetName?: string) => number;
