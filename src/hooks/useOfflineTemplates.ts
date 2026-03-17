@@ -188,6 +188,7 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS cost_items (
     id TEXT PRIMARY KEY, template_id TEXT NOT NULL, ndc TEXT,
     material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT,
+    billing_date TEXT, manufacturer TEXT, generic TEXT, strength TEXT, size TEXT, dose TEXT,
     FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_templates_date ON templates(inv_date DESC);
