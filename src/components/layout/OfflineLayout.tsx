@@ -2,7 +2,6 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ClipboardList, Database, CloudOff, FileSpreadsheet, Wifi } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { QuickClockPanel } from '@/components/timesheet/QuickClockPanel';
 import { Button } from '@/components/ui/button';
 import { isForceOfflineMode, setForceOfflineMode } from '@/components/OfflineRedirect';
 
