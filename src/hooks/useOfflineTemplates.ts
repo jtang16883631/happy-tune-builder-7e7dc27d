@@ -1212,6 +1212,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           const manifest = {
             templateCount: allTemplates[0].values.length,
             templateIds: allTemplates[0].values.map(r => r[0]),
+            lastTemplateId: imported > 0 ? newLocalId : null,
             lastSyncedAt: new Date().toISOString(),
             offlineReady: true,
           };
