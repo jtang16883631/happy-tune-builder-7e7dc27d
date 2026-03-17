@@ -1021,19 +1021,29 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               [generateId(), exportId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
           }
 
-          const PAGE_SIZE = 1000;
-          const { count: totalCount } = await supabase.from('template_cost_items').select('id', { count: 'exact', head: true }).eq('template_id', cloudId);
-          const totalPages = Math.ceil((totalCount || 0) / PAGE_SIZE);
-          const pages = Array.from({ length: Math.max(totalPages, 1) }, (_, p) => p);
-          const pageResults = await Promise.all(
-            pages.map(p => supabase.from('template_cost_items').select('*').eq('template_id', cloudId).range(p * PAGE_SIZE, (p + 1) * PAGE_SIZE - 1))
-          );
-          for (const { data: items } of pageResults) {
-            for (const c of items ?? []) {
+          const BATCH_SIZE = 500;
+          let lastId = '';
+
+          while (true) {
+            const { data: items, error: itemsError } = await supabase
+              .from('template_cost_items')
+              .select('*')
+              .eq('template_id', cloudId)
+              .gt('id', lastId)
+              .order('id', { ascending: true })
+              .limit(BATCH_SIZE);
+
+            if (itemsError) throw itemsError;
+            if (!items || items.length === 0) break;
+
+            for (const c of items) {
               exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [generateId(), exportId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               costItemCount++;
             }
+
+            lastId = items[items.length - 1].id;
+            if (items.length < BATCH_SIZE) break;
           }
           exportedTemplates.push({ id: exportId, name: tData.name, inv_date: tData.inv_date, facility_name: tData.facility_name, inv_number: tData.inv_number });
         }
