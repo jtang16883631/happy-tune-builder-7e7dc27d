@@ -977,7 +977,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         CREATE TABLE sections (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, sect TEXT NOT NULL,
           description TEXT, full_section TEXT, cost_sheet TEXT);
         CREATE TABLE cost_items (id TEXT PRIMARY KEY, template_id TEXT NOT NULL, ndc TEXT,
-          material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT);
+          material_description TEXT, unit_price REAL, source TEXT, material TEXT, sheet_name TEXT,
+          billing_date TEXT, manufacturer TEXT, generic TEXT, strength TEXT, size TEXT, dose TEXT);
       `);
 
       let costItemCount = 0;
