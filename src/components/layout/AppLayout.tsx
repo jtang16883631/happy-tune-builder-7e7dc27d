@@ -11,7 +11,7 @@ import { useProfileCompletion } from '@/hooks/useProfileCompletion';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileBottomNav } from './MobileNav';
 import { MobileHeader } from './MobileHeader';
-import { useOnlineStatus } from '@/components/OfflineRedirect';
+import { useOnlineStatus, setForceOfflineMode } from '@/components/OfflineRedirect';
 import { Loader2 } from 'lucide-react';
 import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 import { Badge } from '@/components/ui/badge';
