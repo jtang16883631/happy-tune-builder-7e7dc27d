@@ -1021,7 +1021,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               [generateId(), exportId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
           }
 
-          const BATCH_SIZE = 500;
+          const BATCH_SIZE = 2000;
           let lastId = '00000000-0000-0000-0000-000000000000';
 
           while (true) {
