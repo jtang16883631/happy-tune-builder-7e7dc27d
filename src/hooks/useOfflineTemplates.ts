@@ -268,54 +268,7 @@ async function _doInit(): Promise<Database | null> {
 
       if (savedDb) {
         _db = new SQL.Database(savedDb);
-        // Run v1 migration if needed
-        const migrationDone = await loadFromIndexedDB<boolean>('migration_v1_done');
-        if (!migrationDone) {
-          try {
-            _db.run(`CREATE TABLE IF NOT EXISTS templates_new (
-              id TEXT PRIMARY KEY, cloud_id TEXT, user_id TEXT, name TEXT NOT NULL,
-              inv_date TEXT, facility_name TEXT, inv_number TEXT, cost_file_name TEXT,
-              job_ticket_file_name TEXT, status TEXT DEFAULT 'active',
-              created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_dirty INTEGER DEFAULT 0
-            )`);
-            _db.run(`INSERT OR IGNORE INTO templates_new SELECT * FROM templates`);
-            _db.run(`DROP TABLE templates`);
-            _db.run(`ALTER TABLE templates_new RENAME TO templates`);
-            _db.run(`CREATE INDEX IF NOT EXISTS idx_templates_date ON templates(inv_date DESC)`);
-            _db.run(`CREATE INDEX IF NOT EXISTS idx_templates_cloud ON templates(cloud_id)`);
-            await _saveDatabase();
-            await saveToIndexedDB('migration_v1_done', true);
-            console.log('[OfflineDB] Migration v1 complete');
-          } catch {
-            await saveToIndexedDB('migration_v1_done', true);
-          }
-        }
-        // Run v2 migration: add address column
-        const migrationV2Done = await loadFromIndexedDB<boolean>('migration_v2_done');
-        if (!migrationV2Done) {
-          try {
-            _db.run(`ALTER TABLE templates ADD COLUMN address TEXT`);
-            await _saveDatabase();
-            console.log('[OfflineDB] Migration v2 complete (added address column)');
-          } catch {
-            // Column may already exist
-          }
-          await saveToIndexedDB('migration_v2_done', true);
-        }
-        // Run v3 migration: add extended cost columns to cost_items
-        const migrationV3Done = await loadFromIndexedDB<boolean>('migration_v3_done');
-        if (!migrationV3Done) {
-          try {
-            const colsToAdd = ['billing_date TEXT', 'manufacturer TEXT', 'generic TEXT', 'strength TEXT', 'size TEXT', 'dose TEXT'];
-            for (const col of colsToAdd) {
-              try { _db.run(`ALTER TABLE cost_items ADD COLUMN ${col}`); } catch { /* column may exist */ }
-            }
-            await _saveDatabase();
-            console.log('[OfflineDB] Migration v3 complete (added extended cost columns)');
-          } catch {}
-          await saveToIndexedDB('migration_v3_done', true);
-        }
-        _db.run(SCHEMA_SQL);
+        await ensureOfflineSchema(_db, true);
 
         try {
           const tc = _db.exec('SELECT COUNT(*) FROM templates');
@@ -346,7 +299,7 @@ async function _doInit(): Promise<Database | null> {
         } catch {}
       } else {
         _db = new SQL.Database();
-        _db.run(SCHEMA_SQL);
+        await ensureOfflineSchema(_db);
         console.log('[OfflineDB] Created fresh database (not persisted until data is added)');
         
         try {
