@@ -52,8 +52,8 @@ serve(async (req) => {
 
     console.log(`[delete-template] User ${user.id} deleting template ${templateId}`);
 
-    // Delete large tables in chunks (50K per call to avoid statement timeout)
-    const chunkSize = 50000;
+    // Delete large tables in chunks (10K per call to avoid statement timeout)
+    const chunkSize = 10000;
     let totalScans = 0;
     let totalCost = 0;
 
