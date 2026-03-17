@@ -538,6 +538,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     success: boolean; synced: number; error?: string;
   }> => {
     const activeDb = db || await _ensureDb();
+    if (activeDb) {
+      await ensureOfflineSchema(activeDb, true);
+    }
     if (!activeDb || !user || !isOnline) {
       const reason = !activeDb ? 'Local database not ready — please reload' : !user ? 'Not authenticated' : 'No internet connection';
       return { success: false, synced: 0, error: reason };
