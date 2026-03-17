@@ -1136,11 +1136,11 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
           }
         }
 
-        const costResult = sourceDb.exec(`SELECT ndc, material_description, unit_price, source, material, sheet_name FROM cost_items WHERE template_id = ?`, [sourceId]);
+        const costResult = sourceDb.exec(`SELECT ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose FROM cost_items WHERE template_id = ?`, [sourceId]);
         if (costResult.length > 0) {
           for (const cRow of costResult[0].values) {
-            db.run(`INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              [generateId(), newLocalId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5]]);
+            db.run(`INSERT INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [generateId(), newLocalId, cRow[0], cRow[1], cRow[2], cRow[3], cRow[4], cRow[5], cRow[6] ?? null, cRow[7] ?? null, cRow[8] ?? null, cRow[9] ?? null, cRow[10] ?? null, cRow[11] ?? null]);
           }
         }
 
