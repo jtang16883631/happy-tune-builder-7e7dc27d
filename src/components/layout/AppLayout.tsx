@@ -2,7 +2,7 @@ import { ReactNode, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LogOut, Users, ScanBarcode, FolderOpen, Pill, LayoutDashboard, CalendarDays, Clock, PanelLeftClose, PanelLeft, Radio, ClipboardList, AlertTriangle, HardDrive, FileText, Database, ShieldX, MessageSquare, UserCog, Ticket, FileStack, Zap, History, Lightbulb, Monitor } from 'lucide-react';
+import { LogOut, Users, ScanBarcode, FolderOpen, Pill, LayoutDashboard, CalendarDays, Clock, PanelLeftClose, PanelLeft, Radio, ClipboardList, AlertTriangle, HardDrive, FileText, Database, ShieldX, MessageSquare, UserCog, Ticket, FileStack, Zap, History, Lightbulb, Monitor, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { AnnouncementBell } from '@/components/announcements/AnnouncementBell';
@@ -11,7 +11,7 @@ import { useProfileCompletion } from '@/hooks/useProfileCompletion';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileBottomNav } from './MobileNav';
 import { MobileHeader } from './MobileHeader';
-import { useOnlineStatus } from '@/components/OfflineRedirect';
+import { useOnlineStatus, setForceOfflineMode } from '@/components/OfflineRedirect';
 import { Loader2 } from 'lucide-react';
 import { useUnreadMessages } from '@/hooks/useUnreadMessages';
 import { Badge } from '@/components/ui/badge';
@@ -329,6 +329,19 @@ export function AppLayout({ children, fullWidth = false, defaultCollapsed = fals
             </div>
             <UserCog className="h-4 w-4 text-white/60" />
           </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setForceOfflineMode(true);
+              window.location.reload();
+            }}
+            className="w-full justify-start gap-2 text-white/70 hover:text-white hover:bg-white/10"
+            title="Switch to offline mode for uninterrupted scanning on unstable WiFi"
+          >
+            <WifiOff className="h-4 w-4" />
+            Force Offline Mode
+          </Button>
           <Button
             variant="ghost"
             size="sm"

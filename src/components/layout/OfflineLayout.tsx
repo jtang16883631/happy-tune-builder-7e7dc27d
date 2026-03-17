@@ -1,8 +1,10 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ClipboardList, Database, CloudOff, FileSpreadsheet } from 'lucide-react';
+import { ClipboardList, Database, CloudOff, FileSpreadsheet, Wifi } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QuickClockPanel } from '@/components/timesheet/QuickClockPanel';
+import { Button } from '@/components/ui/button';
+import { isForceOfflineMode, setForceOfflineMode } from '@/components/OfflineRedirect';
 
 interface OfflineLayoutProps {
   children: ReactNode;
@@ -39,6 +41,20 @@ export function OfflineLayout({ children }: OfflineLayoutProps) {
           <span className="text-sm font-semibold tracking-wide">MERIDIAN PORTAL — OFFLINE MODE</span>
         </div>
         <div className="flex-1" />
+        {isForceOfflineMode() && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setForceOfflineMode(false);
+              window.location.reload();
+            }}
+            className="text-white/70 hover:text-white hover:bg-white/10 gap-2 text-xs"
+          >
+            <Wifi className="h-3.5 w-3.5" />
+            Go Online
+          </Button>
+        )}
         <span className="text-xs text-white/50">Audit, Compile & Master Data available offline</span>
       </header>
 

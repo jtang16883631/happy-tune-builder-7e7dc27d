@@ -31,8 +31,10 @@ export function OfflineRedirect() {
 // Internal full hook – returns { isOnline, isChecking }
 // -----------------------------------------------------------------------
 function useOnlineStatusFull(): { isOnline: boolean; isChecking: boolean } {
+  // Force offline mode — user toggled this to avoid unstable WiFi interruptions
+  const forceOffline = localStorage.getItem('force_offline_mode') === 'true';
   // If navigator.onLine is false at mount time, skip async checking entirely.
-  const navigatorOffline = !navigator.onLine;
+  const navigatorOffline = !navigator.onLine || forceOffline;
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [isChecking, setIsChecking] = useState<boolean>(!navigatorOffline);
   const lastCheckAtRef = useRef<number>(0);
@@ -40,7 +42,8 @@ function useOnlineStatusFull(): { isOnline: boolean; isChecking: boolean } {
   const hasCompletedFirstCheck = useRef<boolean>(false);
 
   const checkBackendReachable = useCallback(async (): Promise<boolean> => {
-    // Quick shortcut: if browser claims offline, trust it immediately.
+    // Quick shortcut: if force offline or browser claims offline, trust it immediately.
+    if (localStorage.getItem('force_offline_mode') === 'true') return false;
     if (!navigator.onLine) return false;
 
     const baseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -70,8 +73,8 @@ function useOnlineStatusFull(): { isOnline: boolean; isChecking: boolean } {
     if (!force && now - lastCheckAtRef.current < 1500) return;
     lastCheckAtRef.current = now;
 
-    // Quick shortcut: if browser claims offline, treat as offline immediately.
-    if (!navigator.onLine) {
+    // Quick shortcut: if force offline or browser claims offline, treat as offline immediately.
+    if (localStorage.getItem('force_offline_mode') === 'true' || !navigator.onLine) {
       failureCountRef.current = 3;
       setIsOnline(false);
       if (!hasCompletedFirstCheck.current) {
@@ -142,4 +145,21 @@ function useOnlineStatusFull(): { isOnline: boolean; isChecking: boolean } {
 export function useOnlineStatus(): boolean {
   const { isOnline } = useOnlineStatusFull();
   return isOnline;
+}
+
+// -----------------------------------------------------------------------
+// Force offline helpers
+// -----------------------------------------------------------------------
+export function setForceOfflineMode(enabled: boolean) {
+  if (enabled) {
+    localStorage.setItem('force_offline_mode', 'true');
+  } else {
+    localStorage.removeItem('force_offline_mode');
+  }
+  // Trigger online/offline re-evaluation
+  window.dispatchEvent(new Event(enabled ? 'offline' : 'online'));
+}
+
+export function isForceOfflineMode(): boolean {
+  return localStorage.getItem('force_offline_mode') === 'true';
 }
