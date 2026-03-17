@@ -54,6 +54,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'material_description', label: 'Product Description', minWidth: 150, defaultWidth: 250 },
   { key: 'unit_price', label: 'Invoice Price', minWidth: 80, defaultWidth: 100 },
   { key: 'source', label: 'Source', minWidth: 60, defaultWidth: 100 },
+  { key: 'sheet_name', label: 'Sheet', minWidth: 90, defaultWidth: 120 },
   { key: 'manufacturer', label: 'Manufacturer', minWidth: 100, defaultWidth: 150 },
   { key: 'material', label: 'ABC 6', minWidth: 60, defaultWidth: 80 },
   { key: 'billing_date', label: 'Invoice Date', minWidth: 80, defaultWidth: 100 },
@@ -62,8 +63,6 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'size', label: 'Size', minWidth: 50, defaultWidth: 60 },
   { key: 'dose', label: 'Dose', minWidth: 50, defaultWidth: 60 },
 ];
-
-const OFFLINE_COLUMNS: ColumnDef[] = ALL_COLUMNS;
 
 const MIN_WIDTH = 400;
 const MIN_HEIGHT = 300;
@@ -85,43 +84,36 @@ export function CostDataLookupDialog({
   const [isCopied, setIsCopied] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-
-  // Window position & size
   const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
   const [windowSize, setWindowSize] = useState({ w: 0, h: 0 });
   const [preMaxState, setPreMaxState] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-
-  const useOfflineMode = !isOnline && !!offlineFns;
-  const COLUMNS = useOfflineMode ? OFFLINE_COLUMNS : ALL_COLUMNS;
-
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
-    ALL_COLUMNS.forEach(col => { initial[col.key] = col.defaultWidth; });
-    OFFLINE_COLUMNS.forEach(col => { initial[col.key] = col.defaultWidth; });
+    ALL_COLUMNS.forEach((col) => {
+      initial[col.key] = col.defaultWidth;
+    });
     return initial;
   });
 
+  const useOfflineMode = !isOnline && !!offlineFns;
   const colResizingRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const resizeRef = useRef<{ startX: number; startY: number; origW: number; origH: number } | null>(null);
   const windowRef = useRef<HTMLDivElement>(null);
 
-  // Initialize position/size when opening
   useEffect(() => {
-    if (open) {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const w = Math.min(Math.max(vw * 0.55, MIN_WIDTH), vw - 40);
-      const h = Math.min(Math.max(vh * 0.7, MIN_HEIGHT), vh - 40);
-      setWindowSize({ w, h });
-      setWindowPos({ x: vw - w - 20, y: 20 });
-      setIsMinimized(false);
-      setIsMaximized(false);
-      setPreMaxState(null);
-    }
+    if (!open) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = Math.min(Math.max(vw * 0.55, MIN_WIDTH), vw - 40);
+    const h = Math.min(Math.max(vh * 0.7, MIN_HEIGHT), vh - 40);
+    setWindowSize({ w, h });
+    setWindowPos({ x: vw - w - 20, y: 20 });
+    setIsMinimized(false);
+    setIsMaximized(false);
+    setPreMaxState(null);
   }, [open]);
 
-  // Drag handlers
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     if (isMaximized) return;
     e.preventDefault();
@@ -136,16 +128,17 @@ export function CostDataLookupDialog({
         y: Math.max(0, Math.min(window.innerHeight - 40, dragRef.current.origY + dy)),
       });
     };
+
     const onUp = () => {
       dragRef.current = null;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [isMaximized, windowPos]);
 
-  // Resize handlers (bottom-right corner)
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     if (isMaximized) return;
     e.preventDefault();
@@ -161,16 +154,17 @@ export function CostDataLookupDialog({
         h: Math.max(MIN_HEIGHT, resizeRef.current.origH + dh),
       });
     };
+
     const onUp = () => {
       resizeRef.current = null;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [isMaximized, windowSize]);
 
-  // Maximize/restore
   const toggleMaximize = () => {
     if (isMaximized) {
       if (preMaxState) {
@@ -178,54 +172,56 @@ export function CostDataLookupDialog({
         setWindowSize({ w: preMaxState.w, h: preMaxState.h });
       }
       setIsMaximized(false);
-    } else {
-      setPreMaxState({ ...windowPos, ...windowSize });
-      setWindowPos({ x: 0, y: 0 });
-      setWindowSize({ w: window.innerWidth, h: window.innerHeight });
-      setIsMaximized(true);
+      return;
     }
+
+    setPreMaxState({ ...windowPos, ...windowSize });
+    setWindowPos({ x: 0, y: 0 });
+    setWindowSize({ w: window.innerWidth, h: window.innerHeight });
+    setIsMaximized(true);
   };
 
-  // Load sheet tabs
   const loadSheetTabs = useCallback(async () => {
     if (!templateId) return;
     setIsLoading(true);
+
     try {
       if (useOfflineMode && offlineFns) {
         const sheets = offlineFns.getCostSheetNames(templateId);
-        const count = offlineFns.getCostItemCount(templateId);
-        setTotalCount(count);
+        setTotalCount(offlineFns.getCostItemCount(templateId));
         setSheetNames(sheets);
         setSelectedSheet(sheets[0] || '');
-      } else {
-        const { count: totalItems } = await supabase
-          .from('template_cost_items')
-          .select('*', { count: 'exact', head: true })
-          .eq('template_id', templateId);
-        setTotalCount(totalItems || 0);
-
-        const sheetSet = new Set<string>();
-        let lastSheet: string | null = null;
-        for (let i = 0; i < 50; i++) {
-          let q = supabase
-            .from('template_cost_items')
-            .select('sheet_name')
-            .eq('template_id', templateId)
-            .not('sheet_name', 'is', null)
-            .neq('sheet_name', '')
-            .order('sheet_name')
-            .limit(1);
-          if (lastSheet) q = q.gt('sheet_name', lastSheet);
-          const { data } = await q;
-          const next = (data?.[0]?.sheet_name ?? '').trim();
-          if (!next) break;
-          sheetSet.add(next);
-          lastSheet = next;
-        }
-        const uniqueSheets = Array.from(sheetSet).sort((a, b) => a.localeCompare(b));
-        setSheetNames(uniqueSheets);
-        setSelectedSheet(uniqueSheets[0] || '');
+        return;
       }
+
+      const { count: totalItems } = await supabase
+        .from('template_cost_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('template_id', templateId);
+      setTotalCount(totalItems || 0);
+
+      const sheetSet = new Set<string>();
+      let lastSheet: string | null = null;
+      for (let i = 0; i < 50; i++) {
+        let q = supabase
+          .from('template_cost_items')
+          .select('sheet_name')
+          .eq('template_id', templateId)
+          .not('sheet_name', 'is', null)
+          .neq('sheet_name', '')
+          .order('sheet_name')
+          .limit(1);
+        if (lastSheet) q = q.gt('sheet_name', lastSheet);
+        const { data } = await q;
+        const next = (data?.[0]?.sheet_name ?? '').trim();
+        if (!next) break;
+        sheetSet.add(next);
+        lastSheet = next;
+      }
+
+      const uniqueSheets = Array.from(sheetSet).sort((a, b) => a.localeCompare(b));
+      setSheetNames(uniqueSheets);
+      setSelectedSheet(uniqueSheets[0] || '');
     } catch (err) {
       console.error('Error loading sheet tabs:', err);
     } finally {
@@ -234,12 +230,11 @@ export function CostDataLookupDialog({
   }, [templateId, useOfflineMode, offlineFns]);
 
   useEffect(() => {
-    if (open && templateId) {
-      loadSheetTabs();
-      setSearchQuery('');
-      setFilteredItems([]);
-      setHasSearched(false);
-    }
+    if (!open || !templateId) return;
+    loadSheetTabs();
+    setSearchQuery('');
+    setFilteredItems([]);
+    setHasSearched(false);
   }, [open, templateId, loadSheetTabs]);
 
   const handleSheetChange = (sheet: string) => {
@@ -253,31 +248,53 @@ export function CostDataLookupDialog({
     if (!templateId || !searchQuery.trim()) return;
     setIsLoading(true);
     setHasSearched(true);
+
     try {
       if (useOfflineMode && offlineFns) {
         const results = await offlineFns.searchCostItems(templateId, searchQuery, selectedSheet || undefined);
-        const mapped: CostItem[] = results.map(r => ({
-          id: r.id, ndc: r.ndc, material_description: r.material_description,
-          unit_price: r.unit_price, source: r.source, material: r.material,
-          billing_date: r.billing_date ?? null, manufacturer: r.manufacturer ?? null,
-          generic: r.generic ?? null, strength: r.strength ?? null,
-          size: r.size ?? null, dose: r.dose ?? null, sheet_name: r.sheet_name,
-        }));
-        setFilteredItems(mapped);
-      } else {
-        const query = `%${searchQuery}%`;
-        let dbQuery = supabase
-          .from('template_cost_items')
-          .select('id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name')
-          .eq('template_id', templateId)
-          .or(`ndc.ilike.${query},generic.ilike.${query},material_description.ilike.${query},manufacturer.ilike.${query}`)
-          .order('source', { ascending: true, nullsFirst: false })
-          .limit(500);
-        if (selectedSheet) dbQuery = dbQuery.eq('sheet_name', selectedSheet);
-        const { data, error } = await dbQuery;
-        if (error) throw error;
-        setFilteredItems(data || []);
+        setFilteredItems(results.map((item) => ({
+          id: item.id,
+          ndc: item.ndc,
+          material_description: item.material_description,
+          unit_price: item.unit_price,
+          source: item.source,
+          material: item.material,
+          billing_date: item.billing_date,
+          manufacturer: item.manufacturer,
+          generic: item.generic,
+          strength: item.strength,
+          size: item.size,
+          dose: item.dose,
+          sheet_name: item.sheet_name,
+        })));
+        return;
       }
+
+      const query = `%${searchQuery}%`;
+      let dbQuery = supabase
+        .from('template_cost_items')
+        .select('id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name')
+        .eq('template_id', templateId)
+        .or([
+          `ndc.ilike.${query}`,
+          `material_description.ilike.${query}`,
+          `manufacturer.ilike.${query}`,
+          `generic.ilike.${query}`,
+          `strength.ilike.${query}`,
+          `size.ilike.${query}`,
+          `dose.ilike.${query}`,
+          `source.ilike.${query}`,
+          `material.ilike.${query}`,
+          `billing_date.ilike.${query}`,
+          `sheet_name.ilike.${query}`,
+        ].join(','))
+        .order('source', { ascending: true, nullsFirst: false })
+        .limit(500);
+
+      if (selectedSheet) dbQuery = dbQuery.eq('sheet_name', selectedSheet);
+      const { data, error } = await dbQuery;
+      if (error) throw error;
+      setFilteredItems(data || []);
     } catch (err) {
       console.error('Error searching cost items:', err);
     } finally {
@@ -298,18 +315,18 @@ export function CostDataLookupDialog({
   };
 
   const handleCopyAll = async () => {
-    const header = COLUMNS.map(col => col.label).join('\t');
-    const rows = filteredItems.map(item =>
-      COLUMNS.map(col => {
+    const header = ALL_COLUMNS.map((col) => col.label).join('\t');
+    const rows = filteredItems.map((item) =>
+      ALL_COLUMNS.map((col) => {
         const value = item[col.key];
         if (value === null || value === undefined) return '';
         if (col.key === 'unit_price') return formatPrice(value as number);
         return String(value);
       }).join('\t')
     );
-    const text = [header, ...rows].join('\n');
+
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText([header, ...rows].join('\n'));
       setIsCopied(true);
       toast.success(`Copied ${filteredItems.length + 1} rows to clipboard`);
       setTimeout(() => setIsCopied(false), 2000);
@@ -318,22 +335,27 @@ export function CostDataLookupDialog({
     }
   };
 
-  // Column resize handlers
   const handleColResizeStart = (key: string, e: React.MouseEvent) => {
     e.preventDefault();
     colResizingRef.current = { key, startX: e.clientX, startWidth: columnWidths[key] };
+
     const onMove = (ev: MouseEvent) => {
       if (!colResizingRef.current) return;
-      const { key: k, startX, startWidth } = colResizingRef.current;
-      const diff = ev.clientX - startX;
-      const colDef = ALL_COLUMNS.find(c => c.key === k) || OFFLINE_COLUMNS.find(c => c.key === k);
-      setColumnWidths(prev => ({ ...prev, [k]: Math.max(colDef?.minWidth || 50, startWidth + diff) }));
+      const { key: activeKey, startX, startWidth } = colResizingRef.current;
+      const colDef = ALL_COLUMNS.find((col) => col.key === activeKey);
+      const nextWidth = startWidth + (ev.clientX - startX);
+      setColumnWidths((prev) => ({
+        ...prev,
+        [activeKey]: Math.max(colDef?.minWidth || 50, nextWidth),
+      }));
     };
+
     const onUp = () => {
       colResizingRef.current = null;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   };
@@ -349,45 +371,43 @@ export function CostDataLookupDialog({
   return createPortal(
     <div
       ref={windowRef}
-      className="fixed z-50 flex flex-col rounded-lg border border-border bg-background shadow-2xl overflow-hidden"
+      className="fixed z-50 flex flex-col overflow-hidden rounded-lg border border-border bg-background shadow-2xl"
       style={posStyle}
     >
-      {/* Title bar - draggable */}
       <div
-        className="flex items-center justify-between px-3 py-2 bg-muted/80 border-b cursor-move select-none shrink-0"
+        className="flex shrink-0 cursor-grab select-none items-center justify-between border-b bg-muted/80 px-3 py-2 active:cursor-grabbing"
         onMouseDown={handleDragStart}
+        onDoubleClick={toggleMaximize}
       >
-        <div className="flex items-center gap-2 text-sm font-semibold truncate">
-          <GripHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
+        <div className="flex items-center gap-2 truncate text-sm font-semibold">
+          <GripHorizontal className="h-4 w-4 shrink-0 text-muted-foreground" />
           <DollarSign className="h-4 w-4 shrink-0" />
           <span className="truncate">Cost Data Lookup</span>
           {useOfflineMode && (
-            <span className="text-[10px] font-normal text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 px-1.5 py-0.5 rounded">
+            <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-normal text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400">
               Offline
             </span>
           )}
-          <span className="text-xs font-normal text-muted-foreground">
-            ({totalCount.toLocaleString()} items)
-          </span>
+          <span className="text-xs font-normal text-muted-foreground">({totalCount.toLocaleString()} items)</span>
         </div>
-        <div className="flex items-center gap-1 shrink-0" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
           <button
             onClick={() => setIsMinimized(!isMinimized)}
-            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             title={isMinimized ? 'Expand' : 'Minimize'}
           >
             {isMinimized ? <Maximize2 className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
           </button>
           <button
             onClick={toggleMaximize}
-            className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             title={isMaximized ? 'Restore' : 'Maximize'}
           >
             {isMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
           </button>
           <button
             onClick={() => onOpenChange(false)}
-            className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/20 hover:text-destructive"
             title="Close"
           >
             <X className="h-3.5 w-3.5" />
@@ -395,21 +415,19 @@ export function CostDataLookupDialog({
         </div>
       </div>
 
-      {/* Content - hidden when minimized */}
       {!isMinimized && (
-        <div className="flex-1 flex flex-col overflow-hidden p-3 gap-2">
-          {/* Sheet Tabs */}
+        <div className="flex flex-1 flex-col gap-2 overflow-hidden p-3 pb-5">
           {sheetNames.length > 0 && (
-            <div className="flex items-center gap-1 border-b shrink-0">
+            <div className="flex shrink-0 items-center gap-1 border-b">
               <div className="flex gap-0 overflow-x-auto">
-                {sheetNames.map(sheet => (
+                {sheetNames.map((sheet) => (
                   <button
                     key={sheet}
                     onClick={() => handleSheetChange(sheet)}
-                    className={`px-3 py-1.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${
+                    className={`border-b-2 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
                       selectedSheet === sheet
-                        ? 'border-primary text-primary bg-primary/10'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-transparent text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                     }`}
                   >
                     {sheet}
@@ -419,18 +437,15 @@ export function CostDataLookupDialog({
             </div>
           )}
 
-          {/* Search row */}
-          <div className="flex gap-2 shrink-0">
+          <div className="flex shrink-0 gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder={useOfflineMode
-                  ? "Search NDC, Description, ABC 6..."
-                  : "Search NDC, Generic, Description, Manufacturer..."}
+                placeholder="Search NDC, description, sheet, manufacturer, generic, strength, size, dose..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleDatabaseSearch()}
-                className="pl-8 h-8 text-sm"
+                className="h-8 pl-8 text-sm"
                 autoFocus
               />
             </div>
@@ -444,34 +459,40 @@ export function CostDataLookupDialog({
               size="sm"
               title="Copy all data to clipboard"
             >
-              {isCopied ? <><Check className="h-3.5 w-3.5 mr-1 text-primary" />Copied</> : <><Copy className="h-3.5 w-3.5 mr-1" />Copy</>}
+              {isCopied ? (
+                <>
+                  <Check className="mr-1 h-3.5 w-3.5 text-primary" />Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="mr-1 h-3.5 w-3.5" />Copy
+                </>
+              )}
             </Button>
           </div>
 
-          {/* Results count */}
           {hasSearched && (
-            <div className="text-xs text-muted-foreground shrink-0">
+            <div className="shrink-0 text-xs text-muted-foreground">
               {filteredItems.length.toLocaleString()} results
               {selectedSheet && ` in "${selectedSheet}"`}
               {filteredItems.length > 0 && ' · sorted by Source A–Z'}
             </div>
           )}
 
-          {/* Results table */}
           <ScrollArea className="flex-1 rounded-md border">
             <div className="min-w-max">
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-muted/80 backdrop-blur-sm">
-                    {COLUMNS.map((col) => (
+                    {ALL_COLUMNS.map((col) => (
                       <th
                         key={col.key}
-                        className="relative text-left text-xs font-medium text-muted-foreground px-2 py-1.5 border-b select-none"
+                        className="relative border-b px-2 py-1.5 text-left text-xs font-medium select-none text-muted-foreground"
                         style={{ width: columnWidths[col.key], minWidth: col.minWidth }}
                       >
-                        <span className="truncate block">{col.label}</span>
+                        <span className="block truncate">{col.label}</span>
                         <div
-                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary"
+                          className="absolute bottom-0 right-0 top-0 w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary"
                           onMouseDown={(e) => handleColResizeStart(col.key, e)}
                         />
                       </th>
@@ -481,13 +502,13 @@ export function CostDataLookupDialog({
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={COLUMNS.length} className="text-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                      <td colSpan={ALL_COLUMNS.length} className="py-8 text-center">
+                        <Loader2 className="mx-auto h-6 w-6 animate-spin" />
                       </td>
                     </tr>
                   ) : filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={COLUMNS.length} className="text-center py-8 text-muted-foreground">
+                      <td colSpan={ALL_COLUMNS.length} className="py-8 text-center text-muted-foreground">
                         {!hasSearched ? (
                           <div className="flex flex-col items-center gap-1">
                             <Search className="h-6 w-6 opacity-30" />
@@ -498,11 +519,11 @@ export function CostDataLookupDialog({
                     </tr>
                   ) : (
                     filteredItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-muted/30 border-b border-muted/20">
-                        {COLUMNS.map((col) => (
+                      <tr key={item.id} className="border-b border-muted/20 hover:bg-muted/30">
+                        {ALL_COLUMNS.map((col) => (
                           <td
                             key={col.key}
-                            className="px-2 py-1 text-xs truncate"
+                            className="truncate px-2 py-1 text-xs"
                             style={{ width: columnWidths[col.key], maxWidth: columnWidths[col.key], minWidth: col.minWidth }}
                             title={formatCellValue(item, col.key)}
                           >
@@ -521,11 +542,11 @@ export function CostDataLookupDialog({
         </div>
       )}
 
-      {/* Resize handle (bottom-right corner) */}
       {!isMinimized && !isMaximized && (
         <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"
+          className="absolute bottom-0 right-0 z-20 flex h-6 w-6 cursor-nwse-resize items-end justify-end rounded-tl-md bg-background/80 pb-0.5 pr-0.5 backdrop-blur-sm"
           onMouseDown={handleResizeStart}
+          title="Resize window"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" className="text-muted-foreground/50">
             <path d="M14 14L8 14L14 8Z" fill="currentColor" />
@@ -534,6 +555,6 @@ export function CostDataLookupDialog({
         </div>
       )}
     </div>,
-    document.body
+    document.body,
   );
 }
