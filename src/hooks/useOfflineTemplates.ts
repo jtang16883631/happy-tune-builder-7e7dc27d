@@ -603,32 +603,36 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             }
 
             setSyncProgress(prev => ({ ...prev, status: 'fetching_cost_items', costItemsFetched: 0 }));
-            const PAGE_SIZE = 1000;
-            const totalCount = countResult.count || 0;
-            const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-            const pageNumbers = Array.from({ length: Math.max(totalPages, 1) }, (_, pageIndex) => pageIndex);
-
-            const pageResults = await Promise.all(
-              pageNumbers.map(page =>
-                supabase.from('template_cost_items')
-                  .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
-                  .eq('template_id', ct.id)
-                  .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1))
-            );
+            const BATCH_SIZE = 500;
+            let totalCostItemsFetched = 0;
+            let lastId = '';
 
             const costStmt = activeDb.prepare(`
               INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
-            let totalCostItemsFetched = 0;
-            for (const { data: costItems, error: costError } of pageResults) {
+            while (true) {
+              const { data: costItems, error: costError } = await supabase
+                .from('template_cost_items')
+                .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
+                .eq('template_id', ct.id)
+                .gt('id', lastId)
+                .order('id', { ascending: true })
+                .limit(BATCH_SIZE);
+
               if (costError) throw costError;
-              for (const c of costItems || []) {
+              if (!costItems || costItems.length === 0) break;
+
+              for (const c of costItems) {
                 costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               }
-              totalCostItemsFetched += (costItems?.length || 0);
+
+              totalCostItemsFetched += costItems.length;
+              lastId = costItems[costItems.length - 1].id;
               setSyncProgress(prev => ({ ...prev, costItemsFetched: totalCostItemsFetched }));
+
+              if (costItems.length < BATCH_SIZE) break;
             }
             costStmt.free();
             activeDb.run('COMMIT');
@@ -752,23 +756,28 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
                 [s.id, localId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
             }
 
-            const PAGE_SIZE = 1000;
-            const totalCount = countResult.count || 0;
-            const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-            const pageNumbers = Array.from({ length: Math.max(totalPages, 1) }, (_, i) => i);
-            const pageResults = await Promise.all(
-              pageNumbers.map(page =>
-                supabase.from('template_cost_items')
-                  .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
-                  .eq('template_id', ct.id)
-                  .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1))
-            );
+            const BATCH_SIZE = 500;
+            let lastId = '';
             const costStmt = db.prepare(`INSERT OR REPLACE INTO cost_items (id, template_id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-            for (const { data: costItems, error: costError } of pageResults) {
-              if (costError) continue;
-              for (const c of costItems || []) {
+
+            while (true) {
+              const { data: costItems, error: costError } = await supabase
+                .from('template_cost_items')
+                .select('id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose')
+                .eq('template_id', ct.id)
+                .gt('id', lastId)
+                .order('id', { ascending: true })
+                .limit(BATCH_SIZE);
+
+              if (costError) throw costError;
+              if (!costItems || costItems.length === 0) break;
+
+              for (const c of costItems) {
                 costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               }
+
+              lastId = costItems[costItems.length - 1].id;
+              if (costItems.length < BATCH_SIZE) break;
             }
             costStmt.free();
             db.run('COMMIT');
@@ -1012,19 +1021,29 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               [generateId(), exportId, s.sect, s.description, s.full_section, s.cost_sheet ?? null]);
           }
 
-          const PAGE_SIZE = 1000;
-          const { count: totalCount } = await supabase.from('template_cost_items').select('id', { count: 'exact', head: true }).eq('template_id', cloudId);
-          const totalPages = Math.ceil((totalCount || 0) / PAGE_SIZE);
-          const pages = Array.from({ length: Math.max(totalPages, 1) }, (_, p) => p);
-          const pageResults = await Promise.all(
-            pages.map(p => supabase.from('template_cost_items').select('*').eq('template_id', cloudId).range(p * PAGE_SIZE, (p + 1) * PAGE_SIZE - 1))
-          );
-          for (const { data: items } of pageResults) {
-            for (const c of items ?? []) {
+          const BATCH_SIZE = 500;
+          let lastId = '';
+
+          while (true) {
+            const { data: items, error: itemsError } = await supabase
+              .from('template_cost_items')
+              .select('*')
+              .eq('template_id', cloudId)
+              .gt('id', lastId)
+              .order('id', { ascending: true })
+              .limit(BATCH_SIZE);
+
+            if (itemsError) throw itemsError;
+            if (!items || items.length === 0) break;
+
+            for (const c of items) {
               exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
                 [generateId(), exportId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
               costItemCount++;
             }
+
+            lastId = items[items.length - 1].id;
+            if (items.length < BATCH_SIZE) break;
           }
           exportedTemplates.push({ id: exportId, name: tData.name, inv_date: tData.inv_date, facility_name: tData.facility_name, inv_number: tData.inv_number });
         }
