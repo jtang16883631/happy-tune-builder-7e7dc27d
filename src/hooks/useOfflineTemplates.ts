@@ -716,6 +716,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
   // ── Pull all from cloud ───────────────────────────────────────
 
   const pullFromCloud = useCallback(async (): Promise<{ success: boolean; pulled: number; error?: string }> => {
+    if (db) {
+      await ensureOfflineSchema(db, true);
+    }
     if (!db || !user || !isOnline) {
       const reason = !db ? 'Local database not ready' : !user ? 'Not authenticated' : 'No internet connection';
       return { success: false, pulled: 0, error: reason };
