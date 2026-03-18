@@ -104,7 +104,102 @@ const Index = () => {
       reader.readAsArrayBuffer(file);
     });
   };
+  const extractInvNumber = (fileName: string): string | null => {
+    const s = fileName.toLowerCase();
+    const m1 = s.match(/(?:\binv\b|invoice)[^\d]{0,5}(\d{6,12})/i);
+    if (m1?.[1]) return m1[1];
+    const m2 = fileName.match(/\d{7,9}/g);
+    if (m2?.length) return m2[0];
+    const matches = fileName.match(/\d{6,12}/g);
+    if (!matches?.length) return null;
+    return matches.sort((a, b) => Math.abs(a.length - 8) - Math.abs(b.length - 8))[0];
+  };
 
+  const isTicketFile = (fileName: string): boolean => {
+    const s = fileName.toLowerCase();
+    return (
+      s.includes('jobticket') || s.includes('job ticket') || s.includes('job_ticket') ||
+      s.includes('jobtickettemplate') || s.includes('job ticket template') ||
+      s.startsWith('jc ') || s.startsWith('jt ') || s.startsWith('bljc ') ||
+      s.includes('bljc') || s.includes(' ticket')
+    );
+  };
+
+  const isCostFile = (fileName: string): boolean => {
+    const s = fileName.toLowerCase();
+    return (
+      s.includes('cost data') || s.includes('costdata') || s.includes('all cost') ||
+      (s.includes('cost') && s.includes('data'))
+    );
+  };
+
+  const groupFiles = (files: FileList): FileGroup[] => {
+    const costFiles: Record<string, File[]> = {};
+    const jobTicketFiles: Record<string, File[]> = {};
+    Array.from(files).forEach((file) => {
+      const inv = extractInvNumber(file.name);
+      if (!inv) return;
+      if (isCostFile(file.name)) { costFiles[inv] = costFiles[inv] || []; costFiles[inv].push(file); }
+      else if (isTicketFile(file.name)) { jobTicketFiles[inv] = jobTicketFiles[inv] || []; jobTicketFiles[inv].push(file); }
+    });
+    const groups: FileGroup[] = [];
+    const invs = new Set([...Object.keys(costFiles), ...Object.keys(jobTicketFiles)]);
+    for (const inv of Array.from(invs)) {
+      const costs = (costFiles[inv] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const tickets = (jobTicketFiles[inv] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+      const pairCount = Math.min(costs.length, tickets.length);
+      for (let i = 0; i < pairCount; i++) {
+        groups.push({ name: pairCount > 1 ? `${inv}-${i + 1}` : inv, costFile: costs[i], jobTicketFile: tickets[i] });
+      }
+    }
+    return groups.sort((a, b) => a.name.localeCompare(b.name));
+  };
+
+  const handleBulkImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    try { await supabase.auth.refreshSession(); } catch { }
+    const groups = groupFiles(files);
+    if (groups.length === 0) {
+      toast({ title: 'No valid pairs found', description: 'Make sure to upload matching cost data and job ticket files.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Import started', description: `Detected ${groups.length} pair(s). Importing now...` });
+    flushSync(() => {
+      setImportProgress({ status: 'parsing', total: groups.length, processed: 0, successful: 0, failed: 0, errors: [], currentGroup: groups[0]?.name, subProcessed: 0, subTotal: 0 });
+    });
+    let successful = 0;
+    let failed = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      flushSync(() => { setImportProgress((prev) => ({ ...prev, status: 'importing', processed: i, currentGroup: group.name, subProcessed: 0, subTotal: 0 })); });
+      await new Promise((r) => setTimeout(r, 0));
+      try {
+        const { data } = await supabase.auth.refreshSession();
+        if (!data.session) throw new Error('Session expired, please re-login');
+      } catch (e: any) {
+        failed++;
+        errors.push(`${group.name}: ${e?.message || 'Session refresh failed'}`);
+        flushSync(() => { setImportProgress((prev) => ({ ...prev, processed: i + 1, successful, failed, errors: errors.slice(-5) })); });
+        continue;
+      }
+      try {
+        const jobTicketData = await parseExcelFile(group.jobTicketFile!);
+        const result = await importTemplate(
+          group.name, group.costFile!, jobTicketData.rawData,
+          group.costFile!.name, group.jobTicketFile!.name, true,
+          (p) => { flushSync(() => { setImportProgress((prev) => ({ ...prev, subProcessed: p.inserted, subTotal: p.total })); }); }
+        );
+        if (result.success) { successful++; } else { failed++; errors.push(`${group.name}: ${result.error}`); }
+      } catch (err: any) { failed++; errors.push(`${group.name}: ${err.message}`); }
+      flushSync(() => { setImportProgress((prev) => ({ ...prev, processed: i + 1, successful, failed, errors: errors.slice(-5), subProcessed: 0, subTotal: 0 })); });
+    }
+    try { await refetch(); } catch (err: any) { console.error('Refetch templates failed:', err); }
+    flushSync(() => { setImportProgress((prev) => ({ ...prev, status: failed > 0 ? 'error' : 'complete', currentGroup: undefined })); });
+    toast({ title: failed > 0 ? 'Import finished with errors' : 'Import complete', description: `${successful} templates created, ${failed} failed.`, ...(failed > 0 ? { variant: 'destructive' as const } : {}) });
+    if (bulkInputRef.current) bulkInputRef.current.value = '';
+  };
 
 
   const [isDeleting, setIsDeleting] = useState(false);
