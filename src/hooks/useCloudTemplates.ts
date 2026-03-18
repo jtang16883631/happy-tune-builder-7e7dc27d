@@ -2,6 +2,29 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
+/**
+ * Fire-and-forget: trigger the build-offline-package edge function
+ * to pre-build a compressed cost items package in storage.
+ */
+async function triggerOfflinePackageBuild(templateId: string) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+    const url = `https://${projectId}.supabase.co/functions/v1/build-offline-package?template_id=${templateId}`;
+    // Fire and forget — don't block the import
+    fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+    }).then(r => {
+      if (r.ok) console.log(`[OfflinePackage] Build triggered for ${templateId}`);
+      else console.warn(`[OfflinePackage] Build failed for ${templateId}: ${r.status}`);
+    }).catch(err => console.warn('[OfflinePackage] Build trigger error:', err));
+  } catch { /* ignore */ }
+}
+
 export type TemplateStatus = 'active' | 'working' | 'completed';
 
 export interface CloudTemplate {
