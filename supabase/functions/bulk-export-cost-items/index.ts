@@ -53,7 +53,13 @@ Deno.serve(async (req) => {
     }
 
     // Use service role to bypass RLS for server-side bulk read
-    const adminClient = createClient(supabaseUrl, serviceKey);
+    // Set a large default range header to avoid the 1000-row PostgREST default
+    const adminClient = createClient(supabaseUrl, serviceKey, {
+      db: { schema: 'public' },
+      global: {
+        headers: { 'Range': '0-99999' },
+      },
+    });
 
     // Get total count first
     const { count, error: countError } = await adminClient
@@ -68,8 +74,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Cursor-paginate server-side in large batches (no PostgREST timeout here)
-    const BATCH_SIZE = 5000;
+    // Cursor-paginate server-side
+    // PostgREST may cap rows at max_rows (often 1000), so we use that as batch size
+    // and only break when we get zero results
+    const BATCH_SIZE = 1000;
     let lastId = "00000000-0000-0000-0000-000000000000";
     const allItems: any[] = [];
 
@@ -94,6 +102,7 @@ Deno.serve(async (req) => {
       allItems.push(...data);
       lastId = data[data.length - 1].id;
 
+      // Only break when we got fewer rows than requested — meaning we've reached the end
       if (data.length < BATCH_SIZE) break;
     }
 
