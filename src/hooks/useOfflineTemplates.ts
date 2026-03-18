@@ -656,7 +656,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       throw new Error('This template has cost items, but its offline package is missing.');
     }
 
-    for (let attempt = 0; attempt < 12; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       if (latestJob.package_status === 'ready') {
         return latestJob;
       }
