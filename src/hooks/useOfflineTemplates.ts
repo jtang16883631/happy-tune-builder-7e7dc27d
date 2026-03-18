@@ -670,6 +670,14 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       const totalRows = latestJob.total_rows ?? expectedItems;
       const processedRows = latestJob.processed_rows ?? 0;
 
+      if ((latestJob.status === 'pending' || latestJob.status === 'processing') && processedRows < totalRows) {
+        onStatus?.(`Uploading cost items (${processedRows}/${totalRows})...`);
+        await sleep(1000);
+        latestJob = await getLatestImportJob(templateId);
+        if (!latestJob) break;
+        continue;
+      }
+
       onStatus?.(
         latestJob.status === 'merging'
           ? `Finishing cost items (${Math.min(processedRows, totalRows)}/${totalRows})...`
