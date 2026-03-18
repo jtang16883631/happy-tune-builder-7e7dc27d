@@ -298,13 +298,11 @@ const Index = () => {
       }
 
       try {
-        const costSheets = await parseExcelFileAllSheets(group.costFile!);
         const jobTicketData = await parseExcelFile(group.jobTicketFile!);
 
         const result = await importTemplate(
           group.name,
           group.costFile!,     // raw File for server-side upload
-          costSheets,          // kept for backward compat / fallback
           jobTicketData.rawData,
           group.costFile!.name,
           group.jobTicketFile!.name,
