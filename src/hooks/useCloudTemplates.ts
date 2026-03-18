@@ -606,6 +606,8 @@ export function useCloudTemplates() {
         if (updateError) console.error('Error updating template:', updateError);
 
         await fetchTemplates();
+        // Pre-build offline package (fire-and-forget)
+        triggerOfflinePackageBuild(templateId);
         return { success: true };
       } catch (err: any) {
         console.error('Update cost data error:', err);
