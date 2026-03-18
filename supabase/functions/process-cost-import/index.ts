@@ -179,34 +179,72 @@ Deno.serve(async (req) => {
 
       const pool = new Pool(dbUrl, 1);
       const conn = await pool.connect();
+      const MERGE_BATCH = 50000;
+      const escapedTemplateId = job.template_id.replace(/'/g, "''");
+      const escapedJobId = job_id.replace(/'/g, "''");
 
       try {
-        // Set a generous statement timeout for large merges (5 minutes)
-        await conn.queryArray(`SET statement_timeout = '300s'`);
+        // Set generous statement timeout per batch (2 minutes each)
+        await conn.queryArray(`SET statement_timeout = '120s'`);
 
-        console.log(
-          `[process-cost-import] Merging: deleting old cost items for template ${job.template_id}`
-        );
+        // ── Chunked DELETE of old cost items ──
+        console.log(`[process-cost-import] Merging: deleting old cost items for template ${job.template_id}`);
+        let totalDeleted = 0;
+        while (true) {
+          const delResult = await conn.queryArray(
+            `WITH to_delete AS (
+              SELECT ctid FROM public.template_cost_items
+              WHERE template_id = '${escapedTemplateId}'
+              LIMIT ${MERGE_BATCH}
+            )
+            DELETE FROM public.template_cost_items
+            WHERE ctid IN (SELECT ctid FROM to_delete)`
+          );
+          const deleted = delResult?.rowCount ?? 0;
+          totalDeleted += deleted;
+          if (deleted > 0) {
+            console.log(`[process-cost-import] Deleted batch: ${deleted} (total: ${totalDeleted})`);
+          }
+          if (deleted < MERGE_BATCH) break;
+        }
+        console.log(`[process-cost-import] Delete complete: ${totalDeleted} rows removed`);
 
+        // ── Chunked INSERT from staging ──
+        let totalInserted = 0;
+        while (true) {
+          const insResult = await conn.queryArray(
+            `WITH batch AS (
+              SELECT id, template_id, ndc, material_description, unit_price, source, material,
+                     billing_date, manufacturer, generic, strength, size, dose, sheet_name
+              FROM public.import_staging_cost_items
+              WHERE job_id = '${escapedJobId}'
+              LIMIT ${MERGE_BATCH}
+            ),
+            inserted AS (
+              INSERT INTO public.template_cost_items
+                (template_id, ndc, material_description, unit_price, source, material,
+                 billing_date, manufacturer, generic, strength, size, dose, sheet_name)
+              SELECT template_id, ndc, material_description, unit_price, source, material,
+                     billing_date, manufacturer, generic, strength, size, dose, sheet_name
+              FROM batch
+              RETURNING 1
+            )
+            DELETE FROM public.import_staging_cost_items
+            WHERE id IN (SELECT id FROM batch)`
+          );
+          const moved = insResult?.rowCount ?? 0;
+          totalInserted += moved;
+          if (moved > 0) {
+            console.log(`[process-cost-import] Merged batch: ${moved} (total: ${totalInserted})`);
+          }
+          if (moved < MERGE_BATCH) break;
+        }
+
+        console.log(`[process-cost-import] Merge complete: ${totalInserted} rows inserted`);
+
+        // Final cleanup of any remaining staging rows
         await conn.queryArray(
-          `DELETE FROM public.template_cost_items WHERE template_id = '${job.template_id.replace(/'/g, "''")}'`
-        );
-
-        console.log(`[process-cost-import] Delete complete, inserting from staging...`);
-
-        await conn.queryArray(
-          `INSERT INTO public.template_cost_items
-             (template_id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name)
-           SELECT template_id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name
-           FROM public.import_staging_cost_items
-           WHERE job_id = '${job_id.replace(/'/g, "''")}'`
-        );
-
-        console.log(`[process-cost-import] Merge complete`);
-
-        // Cleanup staging
-        await conn.queryArray(
-          `DELETE FROM public.import_staging_cost_items WHERE job_id = '${job_id.replace(/'/g, "''")}'`
+          `DELETE FROM public.import_staging_cost_items WHERE job_id = '${escapedJobId}'`
         );
       } finally {
         conn.release();
