@@ -582,6 +582,117 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       } catch (err) { console.error('Get all cost items error:', err); return []; }
     }, [db]);
 
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const getLatestImportJob = useCallback(async (templateId: string) => {
+    const { data, error } = await supabase
+      .from('import_jobs')
+      .select('id, status, total_rows, processed_rows, package_status, package_path, package_error')
+      .eq('template_id', templateId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }, []);
+
+  const resumeCostImportJob = useCallback(async (jobId: string, totalRows: number) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('No active session');
+
+    const response = await fetch(`https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/process-cost-import`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        job_id: jobId,
+        action: 'finalize',
+        total_rows: totalRows,
+      }),
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to resume cost import');
+    }
+  }, []);
+
+  const downloadOfflinePackageItems = useCallback(async (templateId: string) => {
+    const { data: downloadData, error: downloadError } = await supabase.storage
+      .from('offline-packages')
+      .download(`${templateId}/cost-items.json.gz`);
+
+    if (downloadError || !downloadData) {
+      throw new Error(downloadError?.message || 'Offline package download failed');
+    }
+
+    const compressedBytes = new Uint8Array(await downloadData.arrayBuffer());
+    const decompressedStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(compressedBytes);
+        controller.close();
+      },
+    }).pipeThrough(new DecompressionStream('gzip'));
+
+    const decompressedText = await new Response(decompressedStream).text();
+    const parsed = JSON.parse(decompressedText);
+    return Array.isArray(parsed.items) ? parsed.items : [];
+  }, []);
+
+  const ensureOfflinePackageReady = useCallback(async (
+    templateId: string,
+    expectedItems: number,
+    onStatus?: (message: string) => void,
+  ) => {
+    if (expectedItems <= 0) return null;
+
+    let latestJob = await getLatestImportJob(templateId);
+    if (!latestJob) {
+      throw new Error('This template has cost items, but its offline package is missing.');
+    }
+
+    for (let attempt = 0; attempt < 12; attempt++) {
+      if (latestJob.package_status === 'ready') {
+        return latestJob;
+      }
+
+      if (latestJob.status === 'failed' || latestJob.package_status === 'failed') {
+        throw new Error(
+          latestJob.package_error ||
+          (latestJob.status === 'failed' ? 'Cost import failed.' : 'Offline package build failed.')
+        );
+      }
+
+      const totalRows = latestJob.total_rows ?? expectedItems;
+      const processedRows = latestJob.processed_rows ?? 0;
+
+      onStatus?.(
+        latestJob.status === 'merging'
+          ? `Finishing cost items (${Math.min(processedRows, totalRows)}/${totalRows})...`
+          : latestJob.package_status === 'building'
+            ? 'Building offline cost package...'
+            : 'Preparing offline cost data...'
+      );
+
+      await resumeCostImportJob(latestJob.id, totalRows);
+      latestJob = await getLatestImportJob(templateId);
+
+      if (latestJob?.package_status === 'ready') {
+        return latestJob;
+      }
+
+      await sleep(800);
+      latestJob = await getLatestImportJob(templateId);
+      if (!latestJob) break;
+    }
+
+    throw new Error(latestJob?.package_error || 'Offline cost data is still being prepared. Please try again.');
+  }, [getLatestImportJob, resumeCostImportJob]);
+
   // ── Sync: download selected templates from cloud ──────────────
 
   const syncSelectedTemplates = useCallback(async (templateIds: string[]): Promise<{
@@ -611,13 +722,14 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         setSyncProgress(prev => ({ ...prev, currentTemplateIndex: i + 1, status: 'fetching_template', costItemsFetched: 0 }));
 
         try {
-          const [templateResult, countResult] = await Promise.all([
+          const [templateResult, countResult, latestImportJob] = await Promise.all([
             supabase.from('data_templates')
               .select('id, user_id, name, inv_date, facility_name, address, inv_number, cost_file_name, job_ticket_file_name, status, created_at, updated_at')
               .eq('id', cloudId).single(),
             supabase.from('template_cost_items')
               .select('id', { count: 'exact', head: true })
               .eq('template_id', cloudId),
+            getLatestImportJob(cloudId),
           ]);
 
           const { data: ct, error: fetchError } = templateResult;
@@ -654,6 +766,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
             setSyncProgress(prev => ({ ...prev, status: 'fetching_cost_items', costItemsFetched: 0 }));
             const totalExpected = countResult.count ?? 0;
+            const expectedPackageItems = Math.max(totalExpected, latestImportJob?.total_rows ?? 0);
             let totalCostItemsFetched = 0;
 
             const costStmt = activeDb.prepare(`
@@ -661,49 +774,19 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
-            // Download pre-built offline package from storage (built by backend during import)
-            console.log(`[OfflineDB] Downloading offline package for ${totalExpected} cost items`);
+            if (expectedPackageItems > 0) {
+              await ensureOfflinePackageReady(ct.id, expectedPackageItems, (message) => {
+                console.log(`[OfflineDB] ${ct.name}: ${message}`);
+              });
 
-            const { data: latestImportJob } = await supabase
-              .from('import_jobs')
-              .select('status, total_rows, package_status, package_error')
-              .eq('template_id', ct.id)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-            const expectedPackageItems = Math.max(totalExpected, latestImportJob?.total_rows ?? 0);
-            const { data: downloadData, error: dlError } = await supabase.storage
-              .from('offline-packages')
-              .download(`${ct.id}/cost-items.json.gz`);
-
-            if (dlError || !downloadData) {
-              if (expectedPackageItems > 0) {
-                throw new Error(
-                  latestImportJob?.package_error ||
-                  `Offline package is not ready yet (${latestImportJob?.status || 'unknown'} / ${latestImportJob?.package_status || 'none'}).`
-                );
-              }
-              console.warn(`[OfflineDB] No offline package available for template ${ct.id}, but the template has no cost items.`);
-            } else {
-              // Decompress gzip
-              const compressedBytes = new Uint8Array(await downloadData.arrayBuffer());
-              const decompressStream = new ReadableStream({
-                start(controller) {
-                  controller.enqueue(compressedBytes);
-                  controller.close();
-                },
-              }).pipeThrough(new DecompressionStream('gzip'));
-              const decompressedText = await new Response(decompressStream).text();
-              const parsed = JSON.parse(decompressedText);
-              const items = parsed.items || [];
+              const items = await downloadOfflinePackageItems(ct.id);
               console.log(`[OfflineDB] Offline package: ${items.length} items`);
 
-              if (expectedPackageItems > 0 && items.length === 0) {
+              if (items.length === 0) {
                 throw new Error('Offline package is empty even though this template has cost items.');
               }
 
-              if (latestImportJob?.package_status === 'ready' && expectedPackageItems > 0 && items.length < expectedPackageItems) {
+              if (items.length < expectedPackageItems) {
                 throw new Error(`Offline package is incomplete (${items.length}/${expectedPackageItems} cost items).`);
               }
 
@@ -712,10 +795,12 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               }
               totalCostItemsFetched = items.length;
               setSyncProgress(prev => ({ ...prev, costItemsFetched: totalCostItemsFetched }));
+            } else {
+              console.warn(`[OfflineDB] Template ${ct.id} has no cloud cost items to download.`);
             }
 
             costStmt.free();
-            console.log(`[OfflineDB] Fetched ${totalCostItemsFetched} cost items for ${ct.name} (expected ${totalExpected})`);
+            console.log(`[OfflineDB] Fetched ${totalCostItemsFetched} cost items for ${ct.name} (expected ${expectedPackageItems})`);
             activeDb.run('COMMIT');
           } catch (txErr) {
             activeDb.run('ROLLBACK');
@@ -732,7 +817,6 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       }
 
       if (synced > 0) {
-        // Persist to IndexedDB
         try {
           const vc = activeDb.exec('SELECT COUNT(*) FROM templates');
           const vcc = activeDb.exec('SELECT COUNT(*) FROM cost_items');
@@ -747,9 +831,8 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         } catch {}
 
         await updateSyncMeta({ lastSyncedAt: new Date().toISOString() });
-        _notify(); // notify all subscribers
+        _notify();
 
-        // Save offline manifest to localStorage for cold start verification
         try {
           const allTemplates = activeDb.exec('SELECT id, name FROM templates');
           if (allTemplates.length > 0) {
@@ -797,7 +880,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         setSyncProgress({ currentTemplate: null, currentTemplateIndex: 0, totalTemplates: 0, costItemsFetched: 0, status: 'idle' });
       }, 2000);
     }
-  }, [db, user, isOnline, getSyncedTemplateIds, updateSyncMeta]);
+  }, [db, user, isOnline, getSyncedTemplateIds, updateSyncMeta, getLatestImportJob, ensureOfflinePackageReady, downloadOfflinePackageItems]);
 
   // ── Pull all from cloud ───────────────────────────────────────
 
