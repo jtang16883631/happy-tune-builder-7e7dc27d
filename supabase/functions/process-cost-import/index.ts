@@ -8,8 +8,8 @@ const corsHeaders = {
 };
 
 const INTERNAL_AUTH_HEADER = "x-internal-service-key";
-const FINALIZE_TIME_BUDGET_MS = 45_000;
-const MERGE_BATCH = 25_000;
+const FINALIZE_TIME_BUDGET_MS = 40_000;
+const MERGE_BATCH = 5_000;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
