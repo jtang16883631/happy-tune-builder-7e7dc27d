@@ -512,112 +512,29 @@ export function useCloudTemplates() {
     [user, fetchTemplates]
   );
 
-  // Update cost data for a template - replaces all cost items (supports multi-sheet)
+  // Update cost data for a template - uploads file for server-side processing
   const updateCostData = useCallback(
     async (
       templateId: string,
-      costSheets: { rows: any[]; sheetName: string }[],
+      costFile: File,
       costFileName: string
-    ): Promise<{ success: boolean; error?: string }> => {
+    ): Promise<{ success: boolean; error?: string; jobId?: string }> => {
       if (!user) return { success: false, error: 'Not authenticated' };
 
       try {
-        // Delete existing cost items for this template
-        const { error: deleteError } = await supabase
-          .from('template_cost_items')
-          .delete()
-          .eq('template_id', templateId);
+        const result = await startCostImportJob(templateId, user.id, costFile, costFileName);
 
-        if (deleteError) throw deleteError;
-
-        // Helper to truncate strings
-        const truncate = (val: any, maxLen: number = 255): string | null => {
-          if (val == null) return null;
-          const str = String(val).trim();
-          return str.length > maxLen ? str.substring(0, maxLen) : str;
-        };
-
-        // Build all cost items from all sheets
-        const allCostItems: any[] = [];
-        
-        for (const { rows, sheetName } of costSheets) {
-          const columnKeys = rows.length > 0 ? Object.keys(rows[0]) : [];
-          
-          for (const row of rows) {
-            const ndcValue = columnKeys[0] ? row[columnKeys[0]] : null;
-            if (!ndcValue || String(ndcValue).trim().length === 0) continue;
-
-            // Column order: A=NDC, B=Description, C=Price, D=Source, E=Material(ABC6),
-            // F=BillingDate, G=Manufacturer, H=Generic, I=Strength, J=Size, K=Dose
-            const colA = columnKeys[0] ? row[columnKeys[0]] : null;
-            const colB = columnKeys[1] ? row[columnKeys[1]] : null;
-            const colC = columnKeys[2] ? row[columnKeys[2]] : null;
-            const colD = columnKeys[3] ? row[columnKeys[3]] : null;
-            const colE = columnKeys[4] ? row[columnKeys[4]] : null;
-            const colF = columnKeys[5] ? row[columnKeys[5]] : null;
-            const colG = columnKeys[6] ? row[columnKeys[6]] : null;
-            const colH = columnKeys[7] ? row[columnKeys[7]] : null;
-            const colI = columnKeys[8] ? row[columnKeys[8]] : null;
-            const colJ = columnKeys[9] ? row[columnKeys[9]] : null;
-            const colK = columnKeys[10] ? row[columnKeys[10]] : null;
-
-            // Parse billing date (may be Excel serial number or date string)
-            let billingDate: string | null = null;
-            if (colF != null && String(colF).trim()) {
-              const raw = colF;
-              if (typeof raw === 'number') {
-                const d = new Date((raw - 25569) * 86400 * 1000);
-                billingDate = d.toISOString().split('T')[0];
-              } else {
-                const parsed = new Date(String(raw));
-                billingDate = isNaN(parsed.getTime()) ? truncate(String(raw), 50) : parsed.toISOString().split('T')[0];
-              }
-            }
-
-            allCostItems.push({
-              template_id: templateId,
-              ndc: truncate(colA, 50),
-              material_description: truncate(colB, 255),
-              unit_price: colC ? parseFloat(String(colC)) : null,
-              source: truncate(colD, 255),
-              material: truncate(colE, 50),
-              billing_date: billingDate,
-              manufacturer: truncate(colG, 255),
-              generic: truncate(colH, 255),
-              strength: truncate(colI, 100),
-              size: truncate(colJ, 50),
-              dose: truncate(colK, 100),
-              sheet_name: truncate(sheetName ?? 'Sheet1', 50),
-            });
-          }
+        if ('error' in result) {
+          return { success: false, error: result.error };
         }
 
-        // Insert in batches of 500
-        const batchSize = 500;
-        for (let i = 0; i < allCostItems.length; i += batchSize) {
-          const batch = allCostItems.slice(i, i + batchSize);
-          const { error: costError } = await supabase.from('template_cost_items').insert(batch);
-          if (costError) throw costError;
-        }
-
-        // Update template's cost_file_name
-        const { error: updateError } = await supabase
-          .from('data_templates')
-          .update({ cost_file_name: costFileName, updated_at: new Date().toISOString() })
-          .eq('id', templateId);
-
-        if (updateError) console.error('Error updating template:', updateError);
-
-        await fetchTemplates();
-        // Pre-build offline package (fire-and-forget)
-        triggerOfflinePackageBuild(templateId);
-        return { success: true };
+        return { success: true, jobId: result.jobId };
       } catch (err: any) {
         console.error('Update cost data error:', err);
         return { success: false, error: err.message };
       }
     },
-    [user, fetchTemplates]
+    [user]
   );
 
   // Delete related rows in batches to avoid statement timeout
