@@ -459,11 +459,17 @@ export function useCloudTemplates() {
           if (sectionsError) console.error('Error inserting sections:', sectionsError);
         }
 
-        // If we have a cost file, upload and trigger backend processing
+        // If we have a cost file, parse client-side and send chunks to backend
         if (costFile) {
           onProgress?.({ stage: 'uploading', inserted: 0, total: 1 });
 
-          const result = await startCostImportJob(templateId, user.id, costFile, costFileName);
+          const result = await startCostImportJob(
+            templateId,
+            user.id,
+            costFile,
+            costFileName,
+            (sent, total) => onProgress?.({ stage: 'uploading', inserted: sent, total })
+          );
 
           if ('error' in result) {
             console.error('Cost import job failed to start:', result.error);
