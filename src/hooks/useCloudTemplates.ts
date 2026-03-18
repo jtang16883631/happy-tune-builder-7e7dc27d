@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -23,6 +23,90 @@ async function triggerOfflinePackageBuild(templateId: string) {
       else console.warn(`[OfflinePackage] Build failed for ${templateId}: ${r.status}`);
     }).catch(err => console.warn('[OfflinePackage] Build trigger error:', err));
   } catch { /* ignore */ }
+}
+
+export interface ImportJobStatus {
+  id: string;
+  status: 'pending' | 'processing' | 'merging' | 'complete' | 'failed';
+  total_rows: number;
+  processed_rows: number;
+  rows_per_sec: number;
+  avg_batch_ms: number;
+  error_message: string | null;
+}
+
+/**
+ * Upload a cost Excel file to storage and kick off server-side import.
+ * Returns the job_id for polling.
+ */
+async function startCostImportJob(
+  templateId: string,
+  userId: string,
+  costFile: File,
+  costFileName: string
+): Promise<{ jobId: string } | { error: string }> {
+  const filePath = `cost-imports/${templateId}/${Date.now()}-${costFileName}`;
+
+  // 1. Upload file to storage
+  const { error: uploadErr } = await supabase.storage
+    .from('uploads')
+    .upload(filePath, costFile, { upsert: true });
+
+  if (uploadErr) {
+    return { error: `Upload failed: ${uploadErr.message}` };
+  }
+
+  // 2. Create import job record
+  const { data: job, error: jobErr } = await supabase
+    .from('import_jobs')
+    .insert({
+      template_id: templateId,
+      user_id: userId,
+      file_path: filePath,
+      cost_file_name: costFileName,
+      status: 'pending',
+    })
+    .select('id')
+    .single();
+
+  if (jobErr || !job) {
+    // Cleanup uploaded file
+    await supabase.storage.from('uploads').remove([filePath]);
+    return { error: `Job creation failed: ${jobErr?.message || 'Unknown'}` };
+  }
+
+  // 3. Invoke edge function (fire-and-forget — we poll status)
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { error: 'No active session' };
+  }
+
+  fetch(`https://${projectId}.supabase.co/functions/v1/process-cost-import`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ job_id: job.id }),
+  }).catch(err => console.warn('[CostImport] Edge function invoke error:', err));
+
+  return { jobId: job.id };
+}
+
+/**
+ * Poll import job status
+ */
+async function pollImportJob(jobId: string): Promise<ImportJobStatus | null> {
+  const { data, error } = await supabase
+    .from('import_jobs')
+    .select('id, status, total_rows, processed_rows, rows_per_sec, avg_batch_ms, error_message')
+    .eq('id', jobId)
+    .single();
+
+  if (error || !data) return null;
+  return data as ImportJobStatus;
 }
 
 export type TemplateStatus = 'active' | 'working' | 'completed';
