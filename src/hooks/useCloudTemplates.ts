@@ -423,6 +423,8 @@ export function useCloudTemplates() {
         if (!skipRefetch) {
           await fetchTemplates();
         }
+        // Pre-build offline package (fire-and-forget)
+        triggerOfflinePackageBuild(templateId);
         return { success: true, templateId };
       } catch (err: any) {
         console.error('Import template error:', err);
