@@ -8,7 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/** Escape a value for use in a SQL VALUES list */
 function sqlVal(val: string | null): string {
   if (val == null) return "NULL";
   return `'${val.replace(/'/g, "''")}'`;
@@ -203,7 +202,7 @@ Deno.serve(async (req) => {
         })
         .eq("id", job_id);
 
-      // 3. Bulk INSERT into staging via direct Postgres (bypasses API + RLS entirely)
+      // 3. Bulk INSERT into staging via direct Postgres
       const BATCH_SIZE = 5000;
       let processedRows = 0;
       const startTime = Date.now();
@@ -216,7 +215,6 @@ Deno.serve(async (req) => {
           const batch = allItems.slice(i, i + BATCH_SIZE);
           const batchStart = Date.now();
 
-          // Build multi-row VALUES clause
           const valueRows = batch
             .map(
               (item) =>
@@ -240,7 +238,6 @@ Deno.serve(async (req) => {
             elapsedSec > 0 ? Math.round(processedRows / elapsedSec) : 0;
           const avgBatchMs = Math.round(totalBatchMs / batchCount);
 
-          // Update progress every 5 batches (25K rows)
           if (
             batchCount % 5 === 0 ||
             i + BATCH_SIZE >= allItems.length
@@ -261,7 +258,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        // 4. Merge: delete old cost items + copy from staging, all via direct SQL
+        // 4. Merge: delete old cost items + copy from staging
         await admin
           .from("import_jobs")
           .update({
@@ -274,15 +271,10 @@ Deno.serve(async (req) => {
           `[process-cost-import] Merging: deleting old cost items for template ${job.template_id}`
         );
 
-        // Delete existing cost items via direct SQL (fast, no RLS)
-        const deleteResult = await conn.queryArray(
+        await conn.queryArray(
           `DELETE FROM public.template_cost_items WHERE template_id = '${job.template_id.replace(/'/g, "''")}'`
         );
-        console.log(
-          `[process-cost-import] Deleted old cost items via direct SQL`
-        );
 
-        // Copy staging → final via direct SQL (single INSERT...SELECT, no data round-trip)
         await conn.queryArray(
           `INSERT INTO public.template_cost_items
              (template_id, ndc, material_description, unit_price, source, material, billing_date, manufacturer, generic, strength, size, dose, sheet_name)
@@ -292,10 +284,10 @@ Deno.serve(async (req) => {
         );
 
         console.log(
-          `[process-cost-import] Merge complete: ${totalRows} rows via INSERT...SELECT`
+          `[process-cost-import] Merge complete: ${totalRows} rows`
         );
 
-        // 5. Cleanup staging via direct SQL
+        // 5. Cleanup staging
         await conn.queryArray(
           `DELETE FROM public.import_staging_cost_items WHERE job_id = '${job_id.replace(/'/g, "''")}'`
         );
@@ -314,29 +306,95 @@ Deno.serve(async (req) => {
           .eq("id", job.template_id);
       }
 
-      // 7. Mark job complete
-      const elapsedTotal = (Date.now() - startTime) / 1000;
+      // 7. Mark import complete, start building offline package
+      const elapsedImport = (Date.now() - startTime) / 1000;
       await admin
         .from("import_jobs")
         .update({
           status: "complete",
           processed_rows: totalRows,
-          rows_per_sec: Math.round(totalRows / elapsedTotal),
+          rows_per_sec: Math.round(totalRows / elapsedImport),
           avg_batch_ms: batchCount > 0 ? Math.round(totalBatchMs / batchCount) : 0,
           completed_at: new Date().toISOString(),
+          package_status: "building",
           updated_at: new Date().toISOString(),
         })
         .eq("id", job_id);
 
-      // 8. Cleanup uploaded file
+      // 8. Build offline package inline
+      console.log(`[process-cost-import] Building offline package for template ${job.template_id}`);
+
+      try {
+        const PAGE_SIZE = 500;
+        let offset = 0;
+        const pkgItems: any[] = [];
+
+        while (true) {
+          const { data, error } = await admin
+            .from("template_cost_items")
+            .select("id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose")
+            .eq("template_id", job.template_id)
+            .range(offset, offset + PAGE_SIZE - 1);
+
+          if (error) throw new Error(`Package query error: ${error.message}`);
+          if (!data || data.length === 0) break;
+          pkgItems.push(...data);
+          offset += data.length;
+          if (data.length < PAGE_SIZE) break;
+        }
+
+        console.log(`[process-cost-import] Package: ${pkgItems.length} items fetched, compressing...`);
+
+        const jsonPayload = JSON.stringify({ items: pkgItems, count: pkgItems.length });
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(jsonPayload));
+            controller.close();
+          },
+        });
+        const compressedStream = stream.pipeThrough(new CompressionStream("gzip"));
+        const compressedBytes = new Uint8Array(await new Response(compressedStream).arrayBuffer());
+
+        const filePath = `${job.template_id}/cost-items.json.gz`;
+        const { error: uploadError } = await admin.storage
+          .from("offline-packages")
+          .upload(filePath, compressedBytes, {
+            contentType: "application/gzip",
+            upsert: true,
+          });
+
+        if (uploadError) throw new Error(`Package upload error: ${uploadError.message}`);
+
+        console.log(`[process-cost-import] Package uploaded: ${(compressedBytes.length / 1024 / 1024).toFixed(1)} MB`);
+
+        await admin
+          .from("import_jobs")
+          .update({
+            package_status: "ready",
+            package_path: filePath,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job_id);
+      } catch (pkgErr: any) {
+        console.error(`[process-cost-import] Package build failed:`, pkgErr.message);
+        await admin
+          .from("import_jobs")
+          .update({
+            package_status: "failed",
+            package_error: pkgErr.message,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", job_id);
+      }
+
+      // 9. Cleanup uploaded file
       await admin.storage.from("uploads").remove([job.file_path]);
 
+      const elapsedTotal = (Date.now() - startTime) / 1000;
       console.log(
-        `[process-cost-import] Job ${job_id} complete: ${totalRows} rows in ${elapsedTotal.toFixed(1)}s`
+        `[process-cost-import] Job ${job_id} fully complete: ${totalRows} rows in ${elapsedTotal.toFixed(1)}s`
       );
-
-      // NOTE: Offline package build is NOT triggered here.
-      // It should be triggered separately (e.g. by the client after import completes).
 
       await pool.end();
 
@@ -358,7 +416,6 @@ Deno.serve(async (req) => {
         processErr.message
       );
 
-      // Cleanup staging on error (use admin client as fallback)
       await admin
         .from("import_staging_cost_items")
         .delete()
@@ -370,6 +427,7 @@ Deno.serve(async (req) => {
         .update({
           status: "failed",
           error_message: processErr.message,
+          package_status: "none",
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })

@@ -2,32 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
-/**
- * Fire-and-forget: trigger the build-offline-package edge function
- * to pre-build a compressed cost items package in storage.
- */
-async function triggerOfflinePackageBuild(templateId: string) {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const url = `https://${projectId}.supabase.co/functions/v1/build-offline-package?template_id=${templateId}`;
-    // Fire and forget — don't block the import
-    fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-      },
-    }).then(r => {
-      if (r.ok) console.log(`[OfflinePackage] Build triggered for ${templateId}`);
-      else console.warn(`[OfflinePackage] Build failed for ${templateId}: ${r.status}`);
-    }).catch(err => console.warn('[OfflinePackage] Build trigger error:', err));
-  } catch { /* ignore */ }
-}
-
 export interface ImportJobStatus {
   id: string;
   status: 'pending' | 'processing' | 'merging' | 'complete' | 'failed';
+  package_status: 'none' | 'building' | 'ready' | 'failed';
+  package_path: string | null;
+  package_error: string | null;
   total_rows: number;
   processed_rows: number;
   rows_per_sec: number;
@@ -96,17 +76,17 @@ async function startCostImportJob(
 }
 
 /**
- * Poll import job status
+ * Poll import job status including package_status
  */
 async function pollImportJob(jobId: string): Promise<ImportJobStatus | null> {
   const { data, error } = await supabase
     .from('import_jobs')
-    .select('id, status, total_rows, processed_rows, rows_per_sec, avg_batch_ms, error_message')
+    .select('id, status, total_rows, processed_rows, rows_per_sec, avg_batch_ms, error_message, package_status, package_path, package_error')
     .eq('id', jobId)
     .single();
 
   if (error || !data) return null;
-  return data as ImportJobStatus;
+  return data as unknown as ImportJobStatus;
 }
 
 export type TemplateStatus = 'active' | 'working' | 'completed';
@@ -150,7 +130,7 @@ export interface CloudCostItem {
   strength: string | null;
   size: string | null;
   dose: string | null;
-  sheet_name: string | null; // Which cost sheet tab this item came from
+  sheet_name: string | null;
   created_at: string;
 }
 
@@ -170,7 +150,6 @@ export function useCloudTemplates() {
 
     try {
       setIsLoading(true);
-      // Fetch all templates (Supabase defaults to 1000 row limit)
       let allTemplates: any[] = [];
       let from = 0;
       const pageSize = 1000;
@@ -201,7 +180,7 @@ export function useCloudTemplates() {
     fetchTemplates();
   }, [fetchTemplates]);
 
-  // Parse job ticket to extract sections and metadata
+  // Parse job ticket to extract sections and metadata (client-side, lightweight)
   const parseJobTicket = (rawData: any[][], fileName?: string): {
     invDate: string | null;
     invNumber: string | null;
@@ -220,7 +199,7 @@ export function useCloudTemplates() {
       address = String(rawData[4][2]).trim() || null;
     }
 
-    // Try to extract invoice number from filename first (e.g., "25090182.xlsx" or "25090182 - Client Name.xlsx")
+    // Try to extract invoice number from filename first
     if (fileName) {
       const fileNameWithoutExt = fileName.replace(/\.(xlsx?|xls)$/i, '');
       const invoiceMatch = fileNameWithoutExt.match(/^(\d{8})/);
@@ -240,7 +219,6 @@ export function useCloudTemplates() {
           }
         }
 
-        // Look for invoice number in the Excel data
         if (cellValue === 'inv. #' || cellValue === 'inv #' || cellValue === 'inv.#' || 
             cellValue === 'invoice #' || cellValue === 'invoice number' || 
             cellValue.includes('inv. #') || cellValue.includes('invoice #')) {
@@ -339,18 +317,16 @@ export function useCloudTemplates() {
     return { invDate, invNumber, facilityName, address, sections };
   };
 
-  // Import a template - uploads cost file to storage for server-side processing
-  // costFile is the raw Excel File object; jobTicketRawData is still parsed client-side for metadata
+  // Import a template - frontend only uploads file + creates job + triggers backend
   const importTemplate = useCallback(
     async (
       templateName: string,
       costFile: File | null,
-      costSheets: { rows: any[]; sheetName: string }[],
       jobTicketRawData: any[][],
       costFileName: string,
       jobTicketFileName: string,
       skipRefetch: boolean = false,
-      onProgress?: (p: { stage: 'template' | 'sections' | 'cost' | 'uploading' | 'server'; inserted: number; total: number; jobId?: string }) => void
+      onProgress?: (p: { stage: 'template' | 'sections' | 'uploading' | 'server'; inserted: number; total: number; jobId?: string }) => void
     ): Promise<{ success: boolean; error?: string; templateId?: string; jobId?: string }> => {
       if (!user) return { success: false, error: 'Not authenticated' };
 
@@ -382,7 +358,6 @@ export function useCloudTemplates() {
 
         const templateId = templateData.id;
 
-        // In bulk mode we optimistically add the template so UI shows all created items
         if (skipRefetch) {
           setTemplates((prev) => {
             if (prev.some((t) => t.id === templateId)) return prev;
@@ -390,7 +365,7 @@ export function useCloudTemplates() {
           });
         }
 
-        // Insert sections with cost_sheet mapping
+        // Insert sections
         if (sections.length > 0) {
           const sectionInserts = sections.map((s) => ({
             template_id: templateId,
@@ -407,14 +382,13 @@ export function useCloudTemplates() {
           if (sectionsError) console.error('Error inserting sections:', sectionsError);
         }
 
-        // If we have a cost file, upload it and start server-side import
+        // If we have a cost file, upload and trigger backend processing
         if (costFile) {
           onProgress?.({ stage: 'uploading', inserted: 0, total: 1 });
 
           const result = await startCostImportJob(templateId, user.id, costFile, costFileName);
 
           if ('error' in result) {
-            // Fallback: cost upload failed but template+sections are created
             console.error('Cost import job failed to start:', result.error);
             if (!skipRefetch) await fetchTemplates();
             return { success: true, templateId, error: `Template created but cost import failed: ${result.error}` };
@@ -436,7 +410,8 @@ export function useCloudTemplates() {
     },
     [user, fetchTemplates]
   );
-  // Import ticket only (no cost data) - creates template + sections from job ticket
+
+  // Import ticket only (no cost data)
   const importTicketOnly = useCallback(
     async (
       templateName: string,
@@ -449,7 +424,6 @@ export function useCloudTemplates() {
       try {
         const { invDate, invNumber, facilityName, address, sections } = parseJobTicket(jobTicketRawData, jobTicketFileName);
 
-        // Insert template
         const { data: templateData, error: templateError } = await supabase
           .from('data_templates')
           .insert({
@@ -474,7 +448,6 @@ export function useCloudTemplates() {
 
         const templateId = templateData.id;
 
-        // In bulk mode we optimistically add the template so UI shows all created items
         if (skipRefetch) {
           setTemplates((prev) => {
             if (prev.some((t) => t.id === templateId)) return prev;
@@ -482,7 +455,6 @@ export function useCloudTemplates() {
           });
         }
 
-        // Insert sections with cost_sheet mapping
         if (sections.length > 0) {
           const sectionInserts = sections.map((s) => ({
             template_id: templateId,
@@ -499,7 +471,6 @@ export function useCloudTemplates() {
           if (sectionsError) console.error('Error inserting sections:', sectionsError);
         }
 
-        // Only refetch if not in bulk import mode
         if (!skipRefetch) {
           await fetchTemplates();
         }
@@ -512,7 +483,7 @@ export function useCloudTemplates() {
     [user, fetchTemplates]
   );
 
-  // Update cost data for a template - uploads file for server-side processing
+  // Update cost data for a template - upload file, trigger backend
   const updateCostData = useCallback(
     async (
       templateId: string,
@@ -537,75 +508,7 @@ export function useCloudTemplates() {
     [user]
   );
 
-  // Delete related rows in batches to avoid statement timeout
-  // Delete related rows in batches to avoid statement timeout
-  // Uses direct filter-based delete instead of fetching IDs first for speed
-  const deleteBatched = useCallback(
-    async (table: 'scan_records' | 'template_cost_items' | 'template_sections', templateId: string) => {
-      // First, get total count to know if we need batching
-      const { count, error: countErr } = await supabase
-        .from(table)
-        .select('id', { count: 'exact', head: true })
-        .eq('template_id', templateId);
-
-      if (countErr) throw countErr;
-      if (!count || count === 0) return;
-
-      // For small datasets, delete directly
-      if (count <= 1000) {
-        const { error: delErr } = await supabase
-          .from(table)
-          .delete()
-          .eq('template_id', templateId);
-        if (delErr) throw delErr;
-        return;
-      }
-
-      // For large datasets, delete in ID-range batches
-      let lastId = '00000000-0000-0000-0000-000000000000';
-      const maxIterations = Math.ceil(count / 500) + 10;
-      for (let i = 0; i < maxIterations; i++) {
-        // Fetch a batch of IDs
-        const { data: rows, error: fetchErr } = await supabase
-          .from(table)
-          .select('id')
-          .eq('template_id', templateId)
-          .gt('id', lastId)
-          .order('id', { ascending: true })
-          .limit(500);
-
-        if (fetchErr) throw fetchErr;
-        if (!rows || rows.length === 0) break;
-
-        const ids = rows.map((r) => r.id);
-        lastId = ids[ids.length - 1];
-
-        const { error: delErr } = await supabase
-          .from(table)
-          .delete()
-          .in('id', ids);
-
-        if (delErr) throw delErr;
-
-        // Safety: verify rows were actually deleted (RLS might silently block)
-        const { count: remaining } = await supabase
-          .from(table)
-          .select('id', { count: 'exact', head: true })
-          .in('id', ids);
-
-        if (remaining && remaining === ids.length) {
-          // Nothing was deleted — RLS is blocking, bail out
-          console.warn(`[deleteBatched] RLS blocking deletes on ${table}, aborting`);
-          throw new Error(`Permission denied: cannot delete from ${table}`);
-        }
-
-        if (rows.length < 500) break;
-      }
-    },
-    []
-  );
-
-  // Delete a template via backend function (service role bypasses RLS)
+  // Delete a template via backend function
   const deleteTemplate = useCallback(
     async (templateId: string): Promise<{ success: boolean; error?: string }> => {
       try {
@@ -649,8 +552,7 @@ export function useCloudTemplates() {
     return data || [];
   }, []);
 
-  // Get cost item by NDC - returns first match by import order (VLOOKUP logic)
-  // If sheetName is provided, we ONLY search within that cost tab.
+  // Get cost item by NDC
   const getCostItemByNDC = useCallback(
     async (templateId: string, ndc: string, sheetName?: string | null): Promise<CloudCostItem | null> => {
       const cleanNdc = ndc.replace(/\D/g, '');
@@ -666,7 +568,7 @@ export function useCloudTemplates() {
       }
 
       const { data, error } = await query
-        .order('created_at', { ascending: true }) // First imported = first match (VLOOKUP logic)
+        .order('created_at', { ascending: true })
         .limit(1)
         .maybeSingle();
 
@@ -689,7 +591,6 @@ export function useCloudTemplates() {
 
       if (updateError) throw updateError;
 
-      // Update local state
       setTemplates(prev => prev.map(t => 
         t.id === templateId ? { ...t, status } : t
       ));
@@ -699,10 +600,6 @@ export function useCloudTemplates() {
       console.error('Error updating template status:', err);
       return { success: false, error: err.message };
     }
-  }, []);
-
-  const buildOfflinePackage = useCallback(async (templateId: string) => {
-    triggerOfflinePackageBuild(templateId);
   }, []);
 
   return {
@@ -717,7 +614,6 @@ export function useCloudTemplates() {
     getSections,
     getCostItemByNDC,
     updateTemplateStatus,
-    buildOfflinePackage,
     pollImportJob,
     refetch: fetchTemplates,
   };

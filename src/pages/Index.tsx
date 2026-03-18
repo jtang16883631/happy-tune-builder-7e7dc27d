@@ -104,46 +104,12 @@ const Index = () => {
       reader.readAsArrayBuffer(file);
     });
   };
-
-  // Parse ALL sheets from an Excel file (for cost data with multiple tabs like GPO, 340B)
-  const parseExcelFileAllSheets = (file: File): Promise<{ rows: any[]; sheetName: string }[]> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
-          
-          const allSheets: { rows: any[]; sheetName: string }[] = [];
-          
-          for (const sheetName of workbook.SheetNames) {
-            const sheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json(sheet, { defval: null });
-            allSheets.push({ rows: jsonData, sheetName });
-          }
-          
-          resolve(allSheets);
-        } catch (error) {
-          reject(error);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  };
-
   const extractInvNumber = (fileName: string): string | null => {
     const s = fileName.toLowerCase();
-
-    // 1) 优先从 "inv" / "invoice" 附近提取
     const m1 = s.match(/(?:\binv\b|invoice)[^\d]{0,5}(\d{6,12})/i);
     if (m1?.[1]) return m1[1];
-
-    // 2) 再优先 7~9 位（你们历史上多为 7-9 位）
     const m2 = fileName.match(/\d{7,9}/g);
     if (m2?.length) return m2[0];
-
-    // 3) 最后兜底：6~12 位里选“最像INV”的（长度最接近8）
     const matches = fileName.match(/\d{6,12}/g);
     if (!matches?.length) return null;
     return matches.sort((a, b) => Math.abs(a.length - 8) - Math.abs(b.length - 8))[0];
@@ -152,25 +118,17 @@ const Index = () => {
   const isTicketFile = (fileName: string): boolean => {
     const s = fileName.toLowerCase();
     return (
-      s.includes('jobticket') ||
-      s.includes('job ticket') ||
-      s.includes('job_ticket') ||
-      s.includes('jobtickettemplate') ||
-      s.includes('job ticket template') ||
-      s.startsWith('jc ') ||
-      s.startsWith('jt ') ||
-      s.startsWith('bljc ') ||
-      s.includes('bljc') ||
-      s.includes(' ticket')
+      s.includes('jobticket') || s.includes('job ticket') || s.includes('job_ticket') ||
+      s.includes('jobtickettemplate') || s.includes('job ticket template') ||
+      s.startsWith('jc ') || s.startsWith('jt ') || s.startsWith('bljc ') ||
+      s.includes('bljc') || s.includes(' ticket')
     );
   };
 
   const isCostFile = (fileName: string): boolean => {
     const s = fileName.toLowerCase();
     return (
-      s.includes('cost data') ||
-      s.includes('costdata') ||
-      s.includes('all cost') ||
+      s.includes('cost data') || s.includes('costdata') || s.includes('all cost') ||
       (s.includes('cost') && s.includes('data'))
     );
   };
@@ -178,195 +136,69 @@ const Index = () => {
   const groupFiles = (files: FileList): FileGroup[] => {
     const costFiles: Record<string, File[]> = {};
     const jobTicketFiles: Record<string, File[]> = {};
-
     Array.from(files).forEach((file) => {
       const inv = extractInvNumber(file.name);
       if (!inv) return;
-
-      if (isCostFile(file.name)) {
-        costFiles[inv] = costFiles[inv] || [];
-        costFiles[inv].push(file);
-      } else if (isTicketFile(file.name)) {
-        jobTicketFiles[inv] = jobTicketFiles[inv] || [];
-        jobTicketFiles[inv].push(file);
-      }
+      if (isCostFile(file.name)) { costFiles[inv] = costFiles[inv] || []; costFiles[inv].push(file); }
+      else if (isTicketFile(file.name)) { jobTicketFiles[inv] = jobTicketFiles[inv] || []; jobTicketFiles[inv].push(file); }
     });
-
     const groups: FileGroup[] = [];
     const invs = new Set([...Object.keys(costFiles), ...Object.keys(jobTicketFiles)]);
-
     for (const inv of Array.from(invs)) {
       const costs = (costFiles[inv] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
       const tickets = (jobTicketFiles[inv] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
       const pairCount = Math.min(costs.length, tickets.length);
-
       for (let i = 0; i < pairCount; i++) {
-        groups.push({
-          name: pairCount > 1 ? `${inv}-${i + 1}` : inv,
-          costFile: costs[i],
-          jobTicketFile: tickets[i],
-        });
+        groups.push({ name: pairCount > 1 ? `${inv}-${i + 1}` : inv, costFile: costs[i], jobTicketFile: tickets[i] });
       }
     }
-
-    // Stable sort for predictable order
     return groups.sort((a, b) => a.name.localeCompare(b.name));
   };
 
   const handleBulkImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-
-    // Refresh session first to avoid JWT expiration during upload
-    try {
-      await supabase.auth.refreshSession();
-    } catch {
-      // ignore - if offline or other failure, error will show during request
-    }
-
+    try { await supabase.auth.refreshSession(); } catch { }
     const groups = groupFiles(files);
-
     if (groups.length === 0) {
-      toast({
-        title: 'No valid pairs found',
-        description: 'Make sure to upload matching cost data and job ticket files.',
-        variant: 'destructive',
-      });
+      toast({ title: 'No valid pairs found', description: 'Make sure to upload matching cost data and job ticket files.', variant: 'destructive' });
       return;
     }
-
-    toast({
-      title: 'Import started',
-      description: `Detected ${groups.length} pair(s). Importing now...`,
-    });
-
+    toast({ title: 'Import started', description: `Detected ${groups.length} pair(s). Importing now...` });
     flushSync(() => {
-      setImportProgress({
-        status: 'parsing',
-        total: groups.length,
-        processed: 0,
-        successful: 0,
-        failed: 0,
-        errors: [],
-        currentGroup: groups[0]?.name,
-        subProcessed: 0,
-        subTotal: 0,
-      });
+      setImportProgress({ status: 'parsing', total: groups.length, processed: 0, successful: 0, failed: 0, errors: [], currentGroup: groups[0]?.name, subProcessed: 0, subTotal: 0 });
     });
-
     let successful = 0;
     let failed = 0;
     const errors: string[] = [];
-
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
-
-      flushSync(() => {
-        setImportProgress((prev) => ({
-          ...prev,
-          status: 'importing',
-          processed: i,
-          currentGroup: group.name,
-          subProcessed: 0,
-          subTotal: 0,
-        }));
-      });
-
-      // Give browser a chance to render progress bar (avoid React 18 batching causing stuck at 0)
+      flushSync(() => { setImportProgress((prev) => ({ ...prev, status: 'importing', processed: i, currentGroup: group.name, subProcessed: 0, subTotal: 0 })); });
       await new Promise((r) => setTimeout(r, 0));
-
-      // Refresh session before each group to prevent JWT expiration during long imports
       try {
         const { data } = await supabase.auth.refreshSession();
-        if (!data.session) {
-          throw new Error('Session expired, please re-login');
-        }
+        if (!data.session) throw new Error('Session expired, please re-login');
       } catch (e: any) {
         failed++;
         errors.push(`${group.name}: ${e?.message || 'Session refresh failed'}`);
-
-        flushSync(() => {
-          setImportProgress((prev) => ({
-            ...prev,
-            processed: i + 1,
-            successful,
-            failed,
-            errors: errors.slice(-5),
-          }));
-        });
+        flushSync(() => { setImportProgress((prev) => ({ ...prev, processed: i + 1, successful, failed, errors: errors.slice(-5) })); });
         continue;
       }
-
       try {
-        const costSheets = await parseExcelFileAllSheets(group.costFile!);
         const jobTicketData = await parseExcelFile(group.jobTicketFile!);
-
         const result = await importTemplate(
-          group.name,
-          group.costFile!,     // raw File for server-side upload
-          costSheets,          // kept for backward compat / fallback
-          jobTicketData.rawData,
-          group.costFile!.name,
-          group.jobTicketFile!.name,
-          true, // skipRefetch in bulk mode
-          (p) => {
-            flushSync(() => {
-              setImportProgress((prev) => ({
-                ...prev,
-                subProcessed: p.inserted,
-                subTotal: p.total,
-              }));
-            });
-          }
+          group.name, group.costFile!, jobTicketData.rawData,
+          group.costFile!.name, group.jobTicketFile!.name, true,
+          (p) => { flushSync(() => { setImportProgress((prev) => ({ ...prev, subProcessed: p.inserted, subTotal: p.total })); }); }
         );
-
-        if (result.success) {
-          successful++;
-        } else {
-          failed++;
-          errors.push(`${group.name}: ${result.error}`);
-        }
-      } catch (err: any) {
-        failed++;
-        errors.push(`${group.name}: ${err.message}`);
-      }
-
-      flushSync(() => {
-        setImportProgress((prev) => ({
-          ...prev,
-          processed: i + 1,
-          successful,
-          failed,
-          errors: errors.slice(-5),
-          subProcessed: 0,
-          subTotal: 0,
-        }));
-      });
+        if (result.success) { successful++; } else { failed++; errors.push(`${group.name}: ${result.error}`); }
+      } catch (err: any) { failed++; errors.push(`${group.name}: ${err.message}`); }
+      flushSync(() => { setImportProgress((prev) => ({ ...prev, processed: i + 1, successful, failed, errors: errors.slice(-5), subProcessed: 0, subTotal: 0 })); });
     }
-
-    try {
-      await refetch();
-    } catch (err: any) {
-      console.error('Refetch templates failed:', err);
-    }
-
-    flushSync(() => {
-      setImportProgress((prev) => ({
-        ...prev,
-        status: failed > 0 ? 'error' : 'complete',
-        currentGroup: undefined,
-      }));
-    });
-
-    toast({
-      title: failed > 0 ? 'Import finished with errors' : 'Import complete',
-      description: `${successful} templates created, ${failed} failed.`,
-      ...(failed > 0 ? { variant: 'destructive' as const } : {}),
-    });
-
-    if (bulkInputRef.current) {
-      bulkInputRef.current.value = '';
-    }
+    try { await refetch(); } catch (err: any) { console.error('Refetch templates failed:', err); }
+    flushSync(() => { setImportProgress((prev) => ({ ...prev, status: failed > 0 ? 'error' : 'complete', currentGroup: undefined })); });
+    toast({ title: failed > 0 ? 'Import finished with errors' : 'Import complete', description: `${successful} templates created, ${failed} failed.`, ...(failed > 0 ? { variant: 'destructive' as const } : {}) });
+    if (bulkInputRef.current) bulkInputRef.current.value = '';
   };
 
 
@@ -412,48 +244,24 @@ const Index = () => {
   const handleUpdateCostData = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || selectedTemplates.size === 0) return;
-
     setIsUpdatingCost(true);
-
     try {
-      const costSheets = await parseExcelFileAllSheets(file);
-      const detectedSheets = Array.from(
-        new Set(costSheets.map((s) => s.sheetName).filter((n): n is string => Boolean(n)))
-      );
-      toast({
-        title: 'Detected cost tabs',
-        description: detectedSheets.length ? detectedSheets.join(', ') : 'No tabs detected in this file',
-      });
-
       let successCount = 0;
       let failCount = 0;
-
       for (const templateId of Array.from(selectedTemplates)) {
         const result = await updateCostData(templateId, file, file.name);
-        if (result.success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
+        if (result.success) { successCount++; } else { failCount++; }
       }
-
       toast({
-        title: 'Cost data updated',
-        description: `${successCount} template(s) updated${failCount > 0 ? `, ${failCount} failed` : ''}.`,
+        title: 'Cost data update started',
+        description: `${successCount} template(s) queued for processing${failCount > 0 ? `, ${failCount} failed` : ''}.`,
       });
-
       setSelectedTemplates(new Set());
     } catch (err: any) {
-      toast({
-        title: 'Update failed',
-        description: err.message,
-        variant: 'destructive',
-      });
+      toast({ title: 'Update failed', description: err.message, variant: 'destructive' });
     } finally {
       setIsUpdatingCost(false);
-      if (costUpdateInputRef.current) {
-        costUpdateInputRef.current.value = '';
-      }
+      if (costUpdateInputRef.current) costUpdateInputRef.current.value = '';
     }
   };
 
