@@ -718,6 +718,7 @@ export function useCloudTemplates() {
     getCostItemByNDC,
     updateTemplateStatus,
     buildOfflinePackage,
+    pollImportJob,
     refetch: fetchTemplates,
   };
 }
