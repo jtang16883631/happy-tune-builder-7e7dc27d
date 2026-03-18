@@ -1074,8 +1074,11 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       for (let i = 0; i < cloudTemplateIds.length; i++) {
         const cloudId = cloudTemplateIds[i];
         const local = localByCloudId.get(cloudId);
+        const localCostCount = local && db
+          ? Number(db.exec(`SELECT COUNT(*) FROM cost_items WHERE template_id = ?`, [local.id])[0]?.values?.[0]?.[0] ?? 0)
+          : 0;
 
-        if (local && db) {
+        if (local && db && localCostCount > 0) {
           onStatus?.(`Exporting ${local.name} (from device)...`);
           exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [local.id, local.cloud_id, local.user_id, local.name, local.inv_date, local.facility_name, local.address,
@@ -1089,7 +1092,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
           exportedTemplates.push({ id: local.id, name: local.name, inv_date: local.inv_date, facility_name: local.facility_name, inv_number: local.inv_number });
         } else {
-          onStatus?.(`Downloading template ${i + 1}/${cloudTemplateIds.length} from cloud...`);
+          onStatus?.(local && db ? `Downloading ${local.name} from cloud (device copy has no cost items)...` : `Downloading template ${i + 1}/${cloudTemplateIds.length} from cloud...`);
           const { data: tData } = await supabase.from('data_templates').select('*').eq('id', cloudId).single();
           if (!tData) continue;
 
