@@ -663,14 +663,28 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
             // Download pre-built offline package from storage (built by backend during import)
             console.log(`[OfflineDB] Downloading offline package for ${totalExpected} cost items`);
-            
+
+            const { data: latestImportJob } = await supabase
+              .from('import_jobs')
+              .select('status, total_rows, package_status, package_error')
+              .eq('template_id', ct.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const expectedPackageItems = Math.max(totalExpected, latestImportJob?.total_rows ?? 0);
             const { data: downloadData, error: dlError } = await supabase.storage
               .from('offline-packages')
               .download(`${ct.id}/cost-items.json.gz`);
 
             if (dlError || !downloadData) {
-              console.warn(`[OfflineDB] No offline package available for template ${ct.id}. The template may not have been imported yet or the package build is still in progress.`);
-              // Skip cost items — package not ready
+              if (expectedPackageItems > 0) {
+                throw new Error(
+                  latestImportJob?.package_error ||
+                  `Offline package is not ready yet (${latestImportJob?.status || 'unknown'} / ${latestImportJob?.package_status || 'none'}).`
+                );
+              }
+              console.warn(`[OfflineDB] No offline package available for template ${ct.id}, but the template has no cost items.`);
             } else {
               // Decompress gzip
               const compressedBytes = new Uint8Array(await downloadData.arrayBuffer());
@@ -684,6 +698,14 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
               const parsed = JSON.parse(decompressedText);
               const items = parsed.items || [];
               console.log(`[OfflineDB] Offline package: ${items.length} items`);
+
+              if (expectedPackageItems > 0 && items.length === 0) {
+                throw new Error('Offline package is empty even though this template has cost items.');
+              }
+
+              if (latestImportJob?.package_status === 'ready' && expectedPackageItems > 0 && items.length < expectedPackageItems) {
+                throw new Error(`Offline package is incomplete (${items.length}/${expectedPackageItems} cost items).`);
+              }
 
               for (const c of items) {
                 costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
