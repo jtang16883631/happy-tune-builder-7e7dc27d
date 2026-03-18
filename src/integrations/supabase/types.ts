@@ -481,6 +481,9 @@ export type Database = {
           error_message: string | null
           file_path: string
           id: string
+          package_error: string | null
+          package_path: string | null
+          package_status: string
           processed_rows: number | null
           rows_per_sec: number | null
           started_at: string | null
@@ -498,6 +501,9 @@ export type Database = {
           error_message?: string | null
           file_path: string
           id?: string
+          package_error?: string | null
+          package_path?: string | null
+          package_status?: string
           processed_rows?: number | null
           rows_per_sec?: number | null
           started_at?: string | null
@@ -515,6 +521,9 @@ export type Database = {
           error_message?: string | null
           file_path?: string
           id?: string
+          package_error?: string | null
+          package_path?: string | null
+          package_status?: string
           processed_rows?: number | null
           rows_per_sec?: number | null
           started_at?: string | null
