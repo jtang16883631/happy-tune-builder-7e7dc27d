@@ -1,0 +1,1 @@
+INSERT INTO storage.buckets (id, name, public) VALUES ('offline-packages', 'offline-packages', false) ON CONFLICT (id) DO NOTHING; CREATE POLICY "Authenticated users can download offline packages" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'offline-packages');
