@@ -15,6 +15,98 @@ export interface ImportJobStatus {
   error_message: string | null;
 }
 
+type CostImportPayloadRow = {
+  ndc: string | null;
+  material_description: string | null;
+  unit_price: number | null;
+  source: string | null;
+  material: string | null;
+  billing_date: string | null;
+  manufacturer: string | null;
+  generic: string | null;
+  strength: string | null;
+  size: string | null;
+  dose: string | null;
+  sheet_name: string | null;
+};
+
+const COST_IMPORT_CHUNK_SIZE = 5000;
+
+function truncateText(value: unknown, maxLength: number): string | null {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  return text.length > maxLength ? text.slice(0, maxLength) : text;
+}
+
+function normalizeBillingDate(value: unknown): string | null {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+
+  if (typeof value === 'number') {
+    const parsed = new Date((value - 25569) * 86400 * 1000);
+    return Number.isNaN(parsed.getTime()) ? text.slice(0, 50) : parsed.toISOString().slice(0, 10);
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? text.slice(0, 50) : parsed.toISOString().slice(0, 10);
+}
+
+function normalizeCostImportRow(row: any[], sheetName: string): CostImportPayloadRow | null {
+  const ndc = truncateText(row?.[0], 50);
+  if (!ndc) return null;
+
+  const unitPriceRaw = row?.[2];
+  let unitPrice: number | null = null;
+  if (unitPriceRaw != null && String(unitPriceRaw).trim() !== '') {
+    const parsed = Number(unitPriceRaw);
+    unitPrice = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return {
+    ndc,
+    material_description: truncateText(row?.[1], 255),
+    unit_price: unitPrice,
+    source: truncateText(row?.[3], 255),
+    material: truncateText(row?.[4], 50),
+    billing_date: normalizeBillingDate(row?.[5]),
+    manufacturer: truncateText(row?.[6], 255),
+    generic: truncateText(row?.[7], 255),
+    strength: truncateText(row?.[8], 100),
+    size: truncateText(row?.[9], 50),
+    dose: truncateText(row?.[10], 100),
+    sheet_name: truncateText(sheetName, 50),
+  };
+}
+
+async function uploadCostImportChunk(params: {
+  baseUrl: string;
+  headers: Record<string, string>;
+  jobId: string;
+  chunkIndex: number;
+  totalChunks: number;
+  rows: CostImportPayloadRow[];
+}) {
+  const { baseUrl, headers, jobId, chunkIndex, totalChunks, rows } = params;
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      job_id: jobId,
+      action: 'append',
+      rows,
+      chunk_index: chunkIndex,
+      total_chunks: totalChunks,
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Chunk ${chunkIndex + 1}/${totalChunks} failed: ${errBody}`);
+  }
+}
+
 /**
  * Parse Excel client-side, create import job, send parsed rows in chunks
  * to the backend for bulk SQL insert, then call finalize for merge + package build.
@@ -27,59 +119,30 @@ async function startCostImportJob(
   onChunkProgress?: (sent: number, total: number) => void
 ): Promise<{ jobId: string } | { error: string }> {
   const XLSX = await import('xlsx');
-  const CHUNK_SIZE = 10000; // rows per request
 
-  // 1. Parse Excel client-side
   console.log(`[CostImport] Parsing ${costFileName} client-side...`);
   const arrayBuffer = await costFile.arrayBuffer();
   const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
 
-  const allRows: any[] = [];
+  let totalRows = 0;
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
     const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
     if (rows.length <= 1) continue;
-
     for (let r = 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row || !row[0] || String(row[0]).trim().length === 0) continue;
-
-      let billingDate: string | null = null;
-      if (row[5] != null && String(row[5]).trim()) {
-        if (typeof row[5] === 'number') {
-          const d = new Date((row[5] - 25569) * 86400 * 1000);
-          billingDate = d.toISOString().split('T')[0];
-        } else {
-          const parsed = new Date(String(row[5]));
-          billingDate = isNaN(parsed.getTime()) ? String(row[5]).substring(0, 50) : parsed.toISOString().split('T')[0];
-        }
+      if (normalizeCostImportRow(rows[r], sheetName)) {
+        totalRows += 1;
       }
-
-      allRows.push({
-        ndc: row[0] != null ? String(row[0]).trim().substring(0, 50) : null,
-        material_description: row[1] != null ? String(row[1]).trim().substring(0, 255) : null,
-        unit_price: row[2] != null ? parseFloat(String(row[2])) : null,
-        source: row[3] != null ? String(row[3]).trim().substring(0, 255) : null,
-        material: row[4] != null ? String(row[4]).trim().substring(0, 50) : null,
-        billing_date: billingDate,
-        manufacturer: row[6] != null ? String(row[6]).trim().substring(0, 255) : null,
-        generic: row[7] != null ? String(row[7]).trim().substring(0, 255) : null,
-        strength: row[8] != null ? String(row[8]).trim().substring(0, 100) : null,
-        size: row[9] != null ? String(row[9]).trim().substring(0, 50) : null,
-        dose: row[10] != null ? String(row[10]).trim().substring(0, 100) : null,
-        sheet_name: sheetName.substring(0, 50),
-      });
     }
   }
 
-  console.log(`[CostImport] Parsed ${allRows.length} rows from ${workbook.SheetNames.length} sheets`);
+  console.log(`[CostImport] Parsed workbook metadata for ${totalRows} rows from ${workbook.SheetNames.length} sheets`);
 
-  if (allRows.length === 0) {
+  if (totalRows === 0) {
     return { error: 'No data rows found in the Excel file' };
   }
 
-  // 2. Create import job record (no file upload needed)
   const { data: job, error: jobErr } = await supabase
     .from('import_jobs')
     .insert({
@@ -88,7 +151,7 @@ async function startCostImportJob(
       file_path: `client-parsed/${templateId}/${Date.now()}`,
       cost_file_name: costFileName,
       status: 'pending',
-      total_rows: allRows.length,
+      total_rows: totalRows,
     })
     .select('id')
     .single();
@@ -97,14 +160,13 @@ async function startCostImportJob(
     return { error: `Job creation failed: ${jobErr?.message || 'Unknown'}` };
   }
 
-  // 3. Send rows in chunks
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
     return { error: 'No active session' };
   }
 
-  const totalChunks = Math.ceil(allRows.length / CHUNK_SIZE);
+  const totalChunks = Math.max(1, Math.ceil(totalRows / COST_IMPORT_CHUNK_SIZE));
   const baseUrl = `https://${projectId}.supabase.co/functions/v1/process-cost-import`;
   const headers = {
     'Authorization': `Bearer ${session.access_token}`,
@@ -112,40 +174,59 @@ async function startCostImportJob(
     'Content-Type': 'application/json',
   };
 
-  for (let i = 0; i < totalChunks; i++) {
-    const chunk = allRows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-    onChunkProgress?.(i * CHUNK_SIZE, allRows.length);
+  let uploadedRows = 0;
+  let chunkIndex = 0;
+  let chunkRows: CostImportPayloadRow[] = [];
 
-    const res = await fetch(baseUrl, {
-      method: 'POST',
+  const flushChunk = async () => {
+    if (chunkRows.length === 0) return;
+    const currentChunk = chunkRows;
+    chunkRows = [];
+    await uploadCostImportChunk({
+      baseUrl,
       headers,
-      body: JSON.stringify({
-        job_id: job.id,
-        action: 'append',
-        rows: chunk,
-        chunk_index: i,
-        total_chunks: totalChunks,
-      }),
+      jobId: job.id,
+      chunkIndex,
+      totalChunks,
+      rows: currentChunk,
     });
+    chunkIndex += 1;
+    uploadedRows += currentChunk.length;
+    onChunkProgress?.(uploadedRows, totalRows);
+  };
 
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error(`[CostImport] Chunk ${i + 1}/${totalChunks} failed:`, errBody);
-      return { error: `Chunk upload failed: ${errBody}` };
+  try {
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
+      const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+      if (rows.length <= 1) continue;
+
+      for (let r = 1; r < rows.length; r++) {
+        const normalized = normalizeCostImportRow(rows[r], sheetName);
+        if (!normalized) continue;
+        chunkRows.push(normalized);
+        if (chunkRows.length >= COST_IMPORT_CHUNK_SIZE) {
+          await flushChunk();
+        }
+      }
     }
+
+    await flushChunk();
+  } catch (err: any) {
+    console.error('[CostImport] Chunk upload failed:', err);
+    return { error: err?.message || 'Chunk upload failed' };
   }
 
-  onChunkProgress?.(allRows.length, allRows.length);
-  console.log(`[CostImport] All ${totalChunks} chunks sent, finalizing...`);
+  console.log(`[CostImport] Uploaded ${uploadedRows} rows in ${chunkIndex} chunk(s), finalizing...`);
 
-  // 4. Call finalize (merge + package build) — fire-and-forget for speed
   fetch(baseUrl, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       job_id: job.id,
       action: 'finalize',
-      total_rows: allRows.length,
+      total_rows: totalRows,
     }),
   }).catch(err => console.warn('[CostImport] Finalize invoke error:', err));
 

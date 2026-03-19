@@ -14,17 +14,14 @@ const ELECTRON_DB_FILE = 'offline_templates.db';
 // ─── Electron file system helpers ─────────────────────────────────
 const _isElectron = (): boolean => !!(window as any).electronAPI?.offlineSaveDb;
 
+const toTransferableArrayBuffer = (data: Uint8Array): ArrayBuffer => (
+  data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+);
+
 const _electronSave = async (data: Uint8Array): Promise<boolean> => {
   if (!_isElectron()) return false;
   try {
-    // Convert Uint8Array to base64 for IPC transfer
-    let binary = '';
-    const chunk = 8192;
-    for (let i = 0; i < data.length; i += chunk) {
-      binary += String.fromCharCode(...data.subarray(i, i + chunk));
-    }
-    const base64 = btoa(binary);
-    const result = await (window as any).electronAPI.offlineSaveDb(ELECTRON_DB_FILE, base64);
+    const result = await (window as any).electronAPI.offlineSaveDb(ELECTRON_DB_FILE, toTransferableArrayBuffer(data));
     if (result.success) {
       console.log(`[OfflineFS] Saved to local file: ${(result.size / 1024).toFixed(0)} KB`);
       return true;
@@ -42,11 +39,10 @@ const _electronLoad = async (): Promise<Uint8Array | null> => {
   try {
     const result = await (window as any).electronAPI.offlineLoadDb(ELECTRON_DB_FILE);
     if (!result.success || !result.data) return null;
-    // Convert base64 back to Uint8Array
-    const binary = atob(result.data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
+    const bytes = normalizePersistedDbBytes(result.data);
+    if (!bytes) {
+      console.error('[OfflineFS] Unsupported local file payload:', describePersistedDbValue(result.data));
+      return null;
     }
     console.log(`[OfflineFS] Loaded from local file: ${(bytes.byteLength / 1024).toFixed(0)} KB`);
     return bytes;
@@ -622,15 +618,28 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     }
   }, []);
 
-  const downloadOfflinePackageItems = useCallback(async (templateId: string) => {
-    const { data: downloadData, error: downloadError } = await supabase.storage
-      .from('offline-packages')
-      .download(`${templateId}/cost-items.json.gz`);
+  const downloadOfflinePackageBlob = useCallback(async (templateId: string, packagePath?: string | null) => {
+    const candidatePaths = Array.from(new Set([
+      packagePath,
+      `${templateId}/cost-items.ndjson.gz`,
+      `${templateId}/cost-items.json.gz`,
+    ].filter(Boolean) as string[]));
 
-    if (downloadError || !downloadData) {
-      throw new Error(downloadError?.message || 'Offline package download failed');
+    let lastError: any = null;
+    for (const candidatePath of candidatePaths) {
+      const { data, error } = await supabase.storage
+        .from('offline-packages')
+        .download(candidatePath);
+      if (!error && data) {
+        return { blob: data, packagePath: candidatePath };
+      }
+      lastError = error;
     }
 
+    throw new Error(lastError?.message || 'Offline package download failed');
+  }, []);
+
+  const readLegacyOfflinePackageItems = useCallback(async (downloadData: Blob) => {
     const compressedBytes = new Uint8Array(await downloadData.arrayBuffer());
     const decompressedStream = new ReadableStream({
       start(controller) {
@@ -643,6 +652,91 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
     const parsed = JSON.parse(decompressedText);
     return Array.isArray(parsed.items) ? parsed.items : [];
   }, []);
+
+  const streamOfflinePackageItems = useCallback(async (
+    templateId: string,
+    packagePath: string | null | undefined,
+    onItem: (item: any) => void | Promise<void>,
+    onProgress?: (count: number) => void,
+  ) => {
+    const { blob, packagePath: resolvedPackagePath } = await downloadOfflinePackageBlob(templateId, packagePath);
+
+    if (resolvedPackagePath.endsWith('.json.gz')) {
+      const items = await readLegacyOfflinePackageItems(blob);
+      let count = 0;
+      for (const item of items) {
+        await onItem(item);
+        count += 1;
+        if (count % 1000 === 0) {
+          onProgress?.(count);
+        }
+      }
+      onProgress?.(count);
+      return count;
+    }
+
+    const streamFactory = (blob as any).stream;
+    if (typeof streamFactory !== 'function' || typeof TextDecoderStream === 'undefined') {
+      const compressedBytes = new Uint8Array(await blob.arrayBuffer());
+      const decompressedStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(compressedBytes);
+          controller.close();
+        },
+      }).pipeThrough(new DecompressionStream('gzip'));
+      const text = await new Response(decompressedStream).text();
+      const lines = text.split(/\r?\n/);
+      let count = 0;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        await onItem(JSON.parse(trimmed));
+        count += 1;
+        if (count % 1000 === 0) {
+          onProgress?.(count);
+        }
+      }
+      onProgress?.(count);
+      return count;
+    }
+
+    const reader = (blob as any)
+      .stream()
+      .pipeThrough(new DecompressionStream('gzip'))
+      .pipeThrough(new TextDecoderStream())
+      .getReader();
+
+    let count = 0;
+    let buffered = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += value;
+
+      while (true) {
+        const newlineIndex = buffered.indexOf('\n');
+        if (newlineIndex === -1) break;
+        const line = buffered.slice(0, newlineIndex).trim();
+        buffered = buffered.slice(newlineIndex + 1);
+        if (!line) continue;
+        await onItem(JSON.parse(line));
+        count += 1;
+        if (count % 1000 === 0) {
+          onProgress?.(count);
+        }
+      }
+    }
+
+    const tail = buffered.trim();
+    if (tail) {
+      await onItem(JSON.parse(tail));
+      count += 1;
+    }
+
+    onProgress?.(count);
+    return count;
+  }, [downloadOfflinePackageBlob, readLegacyOfflinePackageItems]);
 
   const ensureOfflinePackageReady = useCallback(async (
     templateId: string,
@@ -784,26 +878,31 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
             `);
 
             if (expectedPackageItems > 0) {
-              await ensureOfflinePackageReady(ct.id, expectedPackageItems, (message) => {
+              const readyJob = await ensureOfflinePackageReady(ct.id, expectedPackageItems, (message) => {
                 console.log(`[OfflineDB] ${ct.name}: ${message}`);
               });
 
-              const items = await downloadOfflinePackageItems(ct.id);
-              console.log(`[OfflineDB] Offline package: ${items.length} items`);
+              totalCostItemsFetched = await streamOfflinePackageItems(
+                ct.id,
+                readyJob?.package_path,
+                (c) => {
+                  costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
+                },
+                (count) => {
+                  totalCostItemsFetched = count;
+                  setSyncProgress(prev => ({ ...prev, costItemsFetched: count }));
+                },
+              );
 
-              if (items.length === 0) {
+              console.log(`[OfflineDB] Offline package streamed: ${totalCostItemsFetched} items`);
+
+              if (totalCostItemsFetched === 0) {
                 throw new Error('Offline package is empty even though this template has cost items.');
               }
 
-              if (items.length < expectedPackageItems) {
-                throw new Error(`Offline package is incomplete (${items.length}/${expectedPackageItems} cost items).`);
+              if (totalCostItemsFetched < expectedPackageItems) {
+                throw new Error(`Offline package is incomplete (${totalCostItemsFetched}/${expectedPackageItems} cost items).`);
               }
-
-              for (const c of items) {
-                costStmt.run([c.id, localId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
-              }
-              totalCostItemsFetched = items.length;
-              setSyncProgress(prev => ({ ...prev, costItemsFetched: totalCostItemsFetched }));
             } else {
               console.warn(`[OfflineDB] Template ${ct.id} has no cloud cost items to download.`);
             }
@@ -889,7 +988,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         setSyncProgress({ currentTemplate: null, currentTemplateIndex: 0, totalTemplates: 0, costItemsFetched: 0, status: 'idle' });
       }, 2000);
     }
-  }, [db, user, isOnline, getSyncedTemplateIds, updateSyncMeta, getLatestImportJob, ensureOfflinePackageReady, downloadOfflinePackageItems]);
+  }, [db, user, isOnline, getSyncedTemplateIds, updateSyncMeta, getLatestImportJob, ensureOfflinePackageReady, streamOfflinePackageItems]);
 
   // ── Pull all from cloud ───────────────────────────────────────
 
@@ -1198,9 +1297,9 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
         if (!tData) continue;
 
         const expectedPackageItems = Math.max(countResult.count ?? 0, latestImportJob?.total_rows ?? 0);
-        if (expectedPackageItems > 0) {
-          await ensureOfflinePackageReady(cloudId, expectedPackageItems, onStatus);
-        }
+        const readyJob = expectedPackageItems > 0
+          ? await ensureOfflinePackageReady(cloudId, expectedPackageItems, onStatus)
+          : null;
 
         const exportId = generateId();
         exportDb.run(`INSERT INTO templates VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -1215,20 +1314,22 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
 
         if (expectedPackageItems > 0) {
           onStatus?.(`Downloading ${tData.name} cost items...`);
-          const items = await downloadOfflinePackageItems(cloudId);
+          const streamedCount = await streamOfflinePackageItems(
+            cloudId,
+            readyJob?.package_path,
+            (c) => {
+              exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                [generateId(), exportId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
+              costItemCount++;
+            },
+          );
 
-          if (items.length === 0) {
+          if (streamedCount === 0) {
             throw new Error(`Export package for ${tData.name} is empty.`);
           }
 
-          if (items.length < expectedPackageItems) {
-            throw new Error(`Export package for ${tData.name} is incomplete (${items.length}/${expectedPackageItems}).`);
-          }
-
-          for (const c of items) {
-            exportDb.run(`INSERT INTO cost_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-              [generateId(), exportId, c.ndc, c.material_description, c.unit_price, c.source, c.material, c.sheet_name ?? null, c.billing_date ?? null, c.manufacturer ?? null, c.generic ?? null, c.strength ?? null, c.size ?? null, c.dose ?? null]);
-            costItemCount++;
+          if (streamedCount < expectedPackageItems) {
+            throw new Error(`Export package for ${tData.name} is incomplete (${streamedCount}/${expectedPackageItems}).`);
           }
         }
 
@@ -1239,7 +1340,7 @@ export function useOfflineTemplates(isOnline: boolean = navigator.onLine) {
       exportDb.close();
       return { data: new Uint8Array(dbData), exportedTemplates, costItemCount };
     } catch (err) { console.error('Export cloud templates error:', err); return null; }
-  }, [db, getTemplates, getLatestImportJob, ensureOfflinePackageReady, downloadOfflinePackageItems]);
+  }, [db, getTemplates, getLatestImportJob, ensureOfflinePackageReady, streamOfflinePackageItems]);
 
   // ── Flash drive: preview import ───────────────────────────────
 
