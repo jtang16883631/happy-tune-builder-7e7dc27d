@@ -113,13 +113,28 @@ ipcMain.handle("get-app-version", () => {
 
 // ─── IPC: Offline file system ───────────────────────────────────
 
+function toNodeBuffer(binaryPayload) {
+  if (Buffer.isBuffer(binaryPayload)) {
+    return binaryPayload;
+  }
+  if (binaryPayload instanceof ArrayBuffer) {
+    return Buffer.from(binaryPayload);
+  }
+  if (ArrayBuffer.isView(binaryPayload)) {
+    return Buffer.from(binaryPayload.buffer, binaryPayload.byteOffset, binaryPayload.byteLength);
+  }
+  throw new Error("Unsupported binary payload for offline database save");
+}
+
 // Save a SQLite .db file to the offline folder
-ipcMain.handle("offline-save-db", async (_event, fileName, dataBase64) => {
+ipcMain.handle("offline-save-db", async (_event, fileName, binaryPayload) => {
   try {
     const filePath = path.join(getOfflineDir(), fileName);
-    const buffer = Buffer.from(dataBase64, "base64");
-    fs.writeFileSync(filePath, buffer);
-    const stats = fs.statSync(filePath);
+    const tempPath = `${filePath}.tmp`;
+    const buffer = toNodeBuffer(binaryPayload);
+    await fs.promises.writeFile(tempPath, buffer);
+    await fs.promises.rename(tempPath, filePath);
+    const stats = await fs.promises.stat(filePath);
     console.log(`[OfflineFS] Saved ${fileName} (${(stats.size / 1024).toFixed(0)} KB)`);
     return { success: true, size: stats.size };
   } catch (err) {
@@ -128,16 +143,17 @@ ipcMain.handle("offline-save-db", async (_event, fileName, dataBase64) => {
   }
 });
 
-// Load a SQLite .db file from the offline folder (returns base64)
+// Load a SQLite .db file from the offline folder (returns ArrayBuffer)
 ipcMain.handle("offline-load-db", async (_event, fileName) => {
   try {
     const filePath = path.join(getOfflineDir(), fileName);
     if (!fs.existsSync(filePath)) {
       return { success: true, data: null };
     }
-    const buffer = fs.readFileSync(filePath);
+    const buffer = await fs.promises.readFile(filePath);
     console.log(`[OfflineFS] Loaded ${fileName} (${(buffer.length / 1024).toFixed(0)} KB)`);
-    return { success: true, data: buffer.toString("base64") };
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    return { success: true, data: arrayBuffer };
   } catch (err) {
     console.error("[OfflineFS] Load error:", err);
     return { success: false, error: err.message };

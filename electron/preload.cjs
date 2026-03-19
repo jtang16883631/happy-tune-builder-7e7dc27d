@@ -19,8 +19,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // ─── Offline file system API ────────────────────────────────
-  offlineSaveDb: (fileName, dataBase64) =>
-    ipcRenderer.invoke("offline-save-db", fileName, dataBase64),
+  offlineSaveDb: (fileName, binaryPayload) =>
+    ipcRenderer.invoke("offline-save-db", fileName, binaryPayload),
   offlineLoadDb: (fileName) =>
     ipcRenderer.invoke("offline-load-db", fileName),
   offlineListDbs: () =>
