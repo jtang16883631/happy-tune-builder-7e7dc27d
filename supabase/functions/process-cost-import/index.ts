@@ -381,37 +381,40 @@ Deno.serve(async (req) => {
 
       try {
         const PAGE_SIZE = 5000;
-        let offset = 0;
-        const pkgItems: any[] = [];
-
-        while (true) {
-          const { data, error } = await admin
-            .from("template_cost_items")
-            .select("id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose")
-            .eq("template_id", job.template_id)
-            .range(offset, offset + PAGE_SIZE - 1);
-
-          if (error) throw new Error(`Package query error: ${error.message}`);
-          if (!data || data.length === 0) break;
-          pkgItems.push(...data);
-          offset += data.length;
-          if (data.length < PAGE_SIZE) break;
-        }
-
-        console.log(`[process-cost-import] Package: ${pkgItems.length} items, compressing...`);
-
-        const jsonPayload = JSON.stringify({ items: pkgItems, count: pkgItems.length });
         const encoder = new TextEncoder();
+        let offset = 0;
+        let packageCount = 0;
+
         const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(jsonPayload));
+          async start(controller) {
+            while (true) {
+              const { data, error } = await admin
+                .from("template_cost_items")
+                .select("id, ndc, material_description, unit_price, source, material, sheet_name, billing_date, manufacturer, generic, strength, size, dose")
+                .eq("template_id", job.template_id)
+                .range(offset, offset + PAGE_SIZE - 1);
+
+              if (error) throw new Error(`Package query error: ${error.message}`);
+              if (!data || data.length === 0) break;
+
+              for (const item of data) {
+                controller.enqueue(encoder.encode(`${JSON.stringify(item)}\n`));
+              }
+
+              packageCount += data.length;
+              offset += data.length;
+              if (data.length < PAGE_SIZE) break;
+            }
             controller.close();
           },
         });
+
+        console.log(`[process-cost-import] Package stream ready for ${job.template_id}`);
+
         const compressedStream = stream.pipeThrough(new CompressionStream("gzip"));
         const compressedBytes = new Uint8Array(await new Response(compressedStream).arrayBuffer());
 
-        const filePath = `${job.template_id}/cost-items.json.gz`;
+        const filePath = `${job.template_id}/cost-items.ndjson.gz`;
         const { error: uploadError } = await admin.storage
           .from("offline-packages")
           .upload(filePath, compressedBytes, {
@@ -421,7 +424,7 @@ Deno.serve(async (req) => {
 
         if (uploadError) throw new Error(`Package upload error: ${uploadError.message}`);
 
-        console.log(`[process-cost-import] Package uploaded: ${(compressedBytes.length / 1024 / 1024).toFixed(1)} MB`);
+        console.log(`[process-cost-import] Package uploaded: ${packageCount} items, ${(compressedBytes.length / 1024 / 1024).toFixed(1)} MB`);
 
         await admin
           .from("import_jobs")
